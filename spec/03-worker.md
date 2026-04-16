@@ -1,7 +1,7 @@
 # Spec: packages/worker
 
 ## Purpose
-Executes a single task against a storage backend. Stateless — reads task from env or Redis, reports progress in real-time, exits when done. Spawned as a subprocess by meta-agent.
+Executes a single task against a storage backend. Stateless — reads task from `OURO_TASK` env var, reports progress to Postgres in real-time, exits when done. Spawned as a subprocess by meta-agent.
 
 ## Storage Backend Abstraction
 
@@ -27,7 +27,7 @@ Worker calls: `prepare → run claude → commit → cleanup`. Backend is a plug
 - `cleanup`: `rm -rf /tmp/ouro-{taskId}`
 - Required env: `GITHUB_TOKEN`
 
-### LocalBackend  
+### LocalBackend
 - `prepare`: resolves `target` as absolute path, verifies it exists. If no `.git`: runs `git init && git add -A && git commit -m "init"` automatically.
 - `commit`: `git add -A && git commit -m "ouro task {taskId}: {first 60 chars of instructions}"`
 - `cleanup`: no-op (it's the user's own folder)
@@ -51,12 +51,45 @@ Worker calls: `prepare → run claude → commit → cleanup`. Backend is a plug
 - Also uses `rclone` with OneDrive remote
 - Same pattern as GDriveBackend
 
+## Session Continuity (--continue)
+
+Workers register their PID on startup and emit heartbeats every 30 seconds. The watchdog loop in meta-agent detects dead/stale workers and requeues them — passing `session_id` so the resumed worker can pick up where Claude left off.
+
+### On startup
+
+```typescript
+await registerProcess(`worker:${jobId}`, process.pid, 'node', [])
+const existingSessionId = task.sessionId  // from requeued message, or undefined
+const newSessionId = randomUUID()
+await setJobSession(jobId, process.pid, existingSessionId ?? newSessionId)
+```
+
+### Heartbeat every 30 seconds
+
+```typescript
+const heartbeatInterval = setInterval(() => {
+  void setJobHeartbeat(jobId)
+  void heartbeat(`worker:${jobId}`)
+}, 30_000)
+// cleared in finally block
+```
+
+### Claude invocation
+
+```typescript
+const claudeArgs = existingSessionId !== undefined
+  ? ['--continue', '--dangerously-skip-permissions']
+  : ['--print', '--dangerously-skip-permissions', '-p', prompt]
+```
+
+`--continue` resumes the last Claude session from the same working directory (`target`). The watchdog preserves `job.target` in the requeued message so the resumed worker uses the same `cwd`.
+
 ## Claude Subprocess
 
 Worker spawns claude with the task instructions and streams output in real-time:
 
 ```typescript
-const proc = spawn('claude', ['--print', '--dangerously-skip-permissions', '-p', prompt], {
+const proc = spawn('claude', claudeArgs, {
   cwd: workdir,
   env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: token },
 })
@@ -64,36 +97,32 @@ const proc = spawn('claude', ['--print', '--dangerously-skip-permissions', '-p',
 proc.stdout.on('data', async (chunk) => {
   const line = chunk.toString()
   process.stdout.write(line)
-  await redis.rpush(`ouro:jobs:${taskId}:output`, line)
-  await redis.ltrim(`ouro:jobs:${taskId}:output`, -500, -1)
+  await db`INSERT INTO ouro_job_output (job_id, line) VALUES (${jobId}, ${line})`
 })
 ```
 
-No timeout — the task runs until claude exits. Progress is visible in real-time via UI and gateway notifications. If nothing is happening for > 10 minutes, log a heartbeat warning but don't kill the process.
+No timeout — the task runs until claude exits. Progress is visible in real-time via UI and gateway notifications. If nothing is happening for > 10 minutes, the heartbeat goes stale and the watchdog will requeue the job with its session_id so it can be resumed.
 
-## Progress Reporting
+## Progress Reporting (Postgres)
 
 ```typescript
 // On start
-await redis.hset(`ouro:jobs:${id}`, 'status', 'running', 'startedAt', Date.now())
+await db`UPDATE ouro_jobs SET status='running', started_at=NOW(), pid=${process.pid} WHERE id=${id}`
 
-// Live output — streamed line by line to Redis list + WebSocket
+// Live output — streamed line by line to ouro_job_output + published via NOTIFY
 
 // On complete
-await redis.hset(`ouro:jobs:${id}`, 'status', 'completed', 'completedAt', Date.now())
-await redis.publish('ouro:notify', JSON.stringify({
-  type: 'job_complete', jobId: id, status: 'completed'
-}))
+await db`UPDATE ouro_jobs SET status='completed', completed_at=NOW() WHERE id=${id}`
+await publish('ouro_notify', { type: 'job_complete', jobId: id, status: 'completed' })
 
 // On fail
-await redis.hset(`ouro:jobs:${id}`, 'status', 'failed', 'error', message, 'completedAt', Date.now())
-await redis.publish('ouro:notify', JSON.stringify({
-  type: 'job_complete', jobId: id, status: 'failed'
-}))
+await db`UPDATE ouro_jobs SET status='failed', error=${message}, completed_at=NOW() WHERE id=${id}`
+await publish('ouro_notify', { type: 'job_complete', jobId: id, status: 'failed' })
 ```
 
 ## Open Questions (resolved)
 - ✅ Worker isolation: subprocess (not cc-agent) — simpler, sufficient for v1
 - ✅ Local backend git: auto git-init if no .git found
-- ✅ Timeout: no hard timeout — show live progress, warn after 10min idle
+- ✅ Timeout: no hard timeout — heartbeat goes stale after 10min idle, watchdog requeues with session_id
+- ✅ Session continuity: --continue on resume, session_id persisted in ouro_jobs
 - ⬜ S3/GDrive/OneDrive: stubbed for v1, implement via Ouroboros feedback loop when needed

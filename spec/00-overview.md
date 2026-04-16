@@ -12,6 +12,36 @@ The tertiary value is **self-evolution**: the system improves itself based on us
 
 ---
 
+## Why "Ouroboros"
+
+The name refers to the ancient symbol of a snake eating its own tail — a closed loop with no external dependency.
+
+In v0.1, Ouroboros bootstraps Claude as subprocesses and orchestrates them. In v0.2, the loop closes completely:
+
+```
+Ouroboros infrastructure (Postgres, processes, MCP factory)
+    │
+    ▼
+Claude Code (persistent --continue session)
+    │  uses TWO categories of MCP:
+    ├── Ouroboros Control MCP (@ouroboros/mcp-server)        ← v0.2
+    │     tools: list_jobs(), spawn_worker(), register_mcp()
+    │             approve_evolution(), get_logs(), ...
+    │
+    └── Customer Data MCPs (provisioned by mcp-factory)
+          postgres://, file:///, github://, sqlite:///
+          → Claude queries customer data directly
+    │
+    ▼
+Ouroboros executes via Control MCP → feeds results back to Claude
+    │
+    └── Loop: Claude reasons → acts via MCP → sees results → reasons again
+```
+
+Ouroboros spawns Claude. Claude controls Ouroboros via MCP. Ouroboros provisioned the customer data MCPs that Claude uses to reason. The snake eats its tail.
+
+---
+
 ## Who Runs This
 
 An enterprise or power user who:
@@ -22,7 +52,7 @@ An enterprise or power user who:
 
 ---
 
-## The Three Loops
+## The Four Loops (v0.1.0 — implemented)
 
 ### Loop 1 — MCP Provisioning (primary)
 ```
@@ -56,9 +86,33 @@ user submits feedback: "add a dark mode toggle to the UI"
   → meta-agent dequeues
   → spawns claude subprocess at OURO_REPO_ROOT: implement this, open PR
   → PR opens → user gets diff via gateway → user /approve
-  → meta-agent merges → rebuilds → restarts affected package
+  → meta-agent merges → rebuilds → restarts (supervisor respawns new binary)
   → user verifies it works → they are QA
 ```
+
+### Loop 4 — Watchdog (self-healing)
+```
+every 60 seconds:
+  → query ouro_jobs WHERE status='running' AND last_heartbeat < NOW() - 10min
+  → for each stale job: check isPidAlive(job.pid)
+    → if dead: reset to pending, requeue with session_id
+    → resumed worker uses claude --continue to pick up interrupted session
+  → query ouro_processes WHERE name IN ('gateway', 'ui')
+    → if dead: restart service subprocess, re-register PID
+```
+
+---
+
+## Version Convergence
+
+| | v0.1.0 (implemented) | v0.2 (roadmap) |
+|---|---|---|
+| Meta-agent | Node.js polling loops | Persistent `claude --continue` session |
+| Intelligence | One-shot `spawnSync` claude | Claude with full MCP access |
+| Control interface | None | `@ouroboros/mcp-server` |
+| Session continuity | `session_id` stored, `--continue` on resume | First-class, all operations |
+| Self-healing | Watchdog loop (Loop 4) | Claude can diagnose + fix itself |
+| Multi-tenancy | Single user | Multiple users, OIDC SSO |
 
 ---
 
