@@ -24,9 +24,18 @@ All decisions resolved. Recording final state.
 
 All intelligence goes through `spawnSync('claude', ['--print', '--dangerously-skip-permissions', '-p', prompt])`. This ensures:
 - Enterprise Anthropic account governs all model access
-- Data never leaks through a rogue API call  
+- Data never leaks through a rogue API call
 - IT can audit what the model sees
 - No API key management in the codebase
+
+### Persistent session vs. one-shot ✅ DECIDED
+**Decision:** One-shot `spawnSync` in v0.1.0. Persistent `--continue` session in v0.2.
+
+v0.1.0 uses `spawnSync('claude', ['--print', '-p', prompt])` — stateless, one prompt in, one response out. This is the bootstrap. The infrastructure is being built to enable v0.2 where the meta-agent itself becomes a persistent Claude session using `--continue`.
+
+`--continue` is already used in v0.1.0 for worker session resumption: when the watchdog requeues a job, the resumed worker calls `claude --continue` from the same working directory to resume the interrupted Claude session. The `session_id` is stored on `ouro_jobs` and threaded through the requeue message.
+
+v0.2 elevates `--continue` to a first-class pattern for the coordinator itself: instead of a Node.js polling loop, the meta-agent becomes a long-running Claude session with access to `@ouroboros/mcp-server` tools. See `spec/09-mcp-server.md`.
 
 ---
 
@@ -76,7 +85,10 @@ S3, Google Drive, OneDrive, HTTP API — stubbed (implement via Ouroboros feedba
 **Decision:** Subprocess (not cc-agent). Simpler, sufficient. StorageBackend interface handles backend differences.
 
 ### Worker timeout ✅ DECIDED
-**Decision:** No hard timeout. Stream output live. Log heartbeat warning after 10min idle. User sees what's happening.
+**Decision:** No hard timeout. Heartbeat goes stale after 10 minutes idle. Watchdog detects dead/stale workers, resets job to pending, requeues with `session_id`. Resumed worker uses `--continue`. User sees live output.
+
+### Self-healing / watchdog ✅ DECIDED
+**Decision:** Loop 4 runs inside meta-agent, polls every 60s. Detects stale jobs (heartbeat > 10min old) and dead service PIDs (gateway, ui). Stale jobs are requeued with session_id for --continue resumption.
 
 ---
 
@@ -91,6 +103,15 @@ S3, Google Drive, OneDrive, HTTP API — stubbed (implement via Ouroboros feedba
 
 ### Authentication ✅ DECIDED
 **Decision:** None for v1. Future: OIDC SSO via `OURO_OIDC_ISSUER` env var for enterprise/corporate deployment.
+
+---
+
+## The Cycling Loop
+
+### @ouroboros/mcp-server ✅ DECIDED (roadmap item)
+**Decision:** Build `@ouroboros/mcp-server` in v0.2 to close the Ouroboros loop. See `spec/09-mcp-server.md`.
+
+The v0.1.0 meta-agent (Node.js polling loops + one-shot claude subprocesses) is deliberately a bootstrap: simple enough to implement and reason about, but designed so the v0.2 upgrade replaces the Node.js coordinator with a persistent Claude session. The Control MCP tools (`list_jobs`, `spawn_worker`, `register_mcp`, etc.) mirror exactly what the polling loops do today.
 
 ---
 

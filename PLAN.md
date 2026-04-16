@@ -1,45 +1,44 @@
-# Plan: Self-Healing, Watchdog Loop, --continue Session Continuity
+# Plan: Spec v2 — Cycling Loop Architecture
 
 ## Task Restatement
 
-Add three complementary resilience features to Ouroboros:
-1. **Loop 4 (watchdog)**: 60s poll that detects dead worker PIDs and stale service processes, resets jobs to pending, and requeues with session_id so they can resume.
-2. **Worker session continuity**: Workers register their PID, emit 30s heartbeats, and use `--continue` when the task includes a `sessionId` from a prior interrupted run.
-3. **Post-evolution self-restart**: After a feedback PR is merged and built successfully, meta-agent does a graceful exit so the supervisor respawns with the new binary.
+Rewrite the Ouroboros spec to accurately reflect what was actually built AND articulate the intended v0.2 architectural evolution (the true "Ouroboros cycling loop"). The spec must document as-built code (v0.1.0), not aspirational pseudocode. New and updated files must clearly mark what's implemented vs. roadmap.
 
-## Approaches Considered
+## Key Findings from Reading the Codebase
 
-### A. Heartbeat via advisory locks (rejected)
-Use a transient advisory lock that needs periodic renewal as the liveness signal. Clean on paper but advisory locks in postgres.js require a dedicated connection — incompatible with the singleton `getDb()` pattern.
+**Already built (v0.1.0):**
+- meta-agent: 4 loops running (`startMcpWatch`, `startWorkerDispatch`, `startEvolution`, `watchdogLoop`)
+- core: process-registry exports (registerProcess, unregisterProcess, heartbeat, setJobSession, setJobHeartbeat, getStaleJobs)
+- spec/08-self-healing.md already exists — accurate
+- worker: subprocess pattern with `--continue` for resume
+- gateway: multi-adapter (Telegram, Slack, webhook, log-always)
 
-### B. External process monitor (rejected)
-A separate supervisor process checks PIDs. Adds a new process dependency, complicates deployment, and duplicates work the meta-agent coordinator already owns.
+**Stale in existing specs:**
+- spec/03-worker.md and spec/05-gateway.md reference Redis (wrong — Postgres/pgmq only)
+- spec/02-meta-agent.md only documents 3 loops (missing Loop 4 watchdog)
+- spec/07-open-questions.md doesn't address "persistent session" decision
+- README.md is missing Architecture diagram and Roadmap section
+- spec/09-mcp-server.md doesn't exist yet
 
-### C. Heartbeat timestamps in Postgres + in-process watchdog loop (chosen)
-- Workers write `last_heartbeat = NOW()` every 30s into `ouro_jobs`
-- Service processes write to `ouro_processes` table
-- Watchdog loop inside meta-agent polls every 60s
-- No extra dependencies, fits existing Postgres-only constraint
+## Approach
+
+Direct spec updates — no code changes. Update markdown files to match what's built, add v0.2 architectural vision.
 
 ## Files to Touch
 
 | File | Action |
 |---|---|
-| `packages/core/src/migrations/002_self_healing.sql` | New — process tracking columns + ouro_processes table |
-| `packages/core/src/process-registry.ts` | New — 7 exported functions |
-| `packages/core/src/types.ts` | Extend Job with pid/sessionId/lastHeartbeat |
-| `packages/core/src/index.ts` | Re-export process-registry |
-| `packages/meta-agent/src/loops/watchdog.ts` | New — Loop 4 |
-| `packages/meta-agent/src/index.ts` | Add watchdog + MetaAgentState |
-| `packages/meta-agent/src/loops/evolution.ts` | Add rebuild+restart after applied |
-| `packages/worker/src/run.ts` | Heartbeats, PID registration, --continue |
-| `packages/core/src/__tests__/process-registry.test.ts` | New tests |
-| `packages/meta-agent/src/__tests__/watchdog.test.ts` | New tests |
-| `spec/08-self-healing.md` | New spec doc |
+| `spec/00-overview.md` | Add Loop 4, cycling loop concept, convergence table |
+| `spec/02-meta-agent.md` | Add Loop 4 watchdog, --continue note, v0.2 vision |
+| `spec/03-worker.md` | Fix Redis refs → Postgres; add heartbeat, session_id, --continue |
+| `spec/05-gateway.md` | Fix Redis refs → Postgres/LISTEN-NOTIFY |
+| `spec/07-open-questions.md` | Add persistent session decision, cycling loop decision |
+| `spec/08-self-healing.md` | Already exists + accurate — minor tweaks only if needed |
+| `spec/09-mcp-server.md` | NEW: @ouroboros/mcp-server v0.2, tool list, cycling loop |
+| `README.md` | Add Architecture section (cycling loop diagram), Roadmap section |
 
 ## Risks
 
-- `process.kill(pid, 0)` on Windows: Node.js normalises this — checks existence without sending a signal. Safe cross-platform.
-- `--continue` in claude CLI resumes the last session from the cwd. Must use the same `target` (cwd) for both initial and resume runs.
-- Build failure guard: never restart if `pnpm build` fails — keep running old binary.
-- `exactOptionalPropertyTypes: true` — can't assign `undefined` to optional fields; use conditional assignment.
+- spec/08-self-healing.md already exists and is accurate — verify before touching
+- spec/03-worker.md has deep Redis references that need full replacement
+- README.md cycling loop ASCII art must be clear enough for a new engineer
