@@ -1,4 +1,22 @@
-# TODO: packages/gateway Implementation
+# TODO: Vitest Tests Across All Packages
+
+- [x] Create branch feat/tests
+- [x] Update PLAN.md and TODO.md
+- [ ] Update root package.json (add vitest devDeps)
+- [ ] packages/core: update package.json, create vitest.config.ts, create __tests__
+- [ ] packages/mcp-factory: update package.json, create vitest.config.ts, create __tests__
+- [ ] packages/worker: update package.json, create vitest.config.ts, create __tests__
+- [ ] packages/meta-agent: update package.json, create vitest.config.ts, create __tests__
+- [ ] packages/gateway: update package.json, create vitest.config.ts, create __tests__
+- [ ] packages/ui: update package.json, create vitest.config.ts, create server/app.ts, update server/index.ts, create server/__tests__
+- [ ] pnpm install
+- [ ] pnpm test — fix failures
+- [ ] pnpm build — verify no regressions
+- [ ] commit and create PR
+
+---
+
+# (Previous TODO) packages/gateway Implementation
 
 - [x] Write PLAN.md (gateway)
 - [ ] git checkout -b feat/gateway

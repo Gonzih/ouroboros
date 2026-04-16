@@ -1,3 +1,24 @@
+# PLAN — Vitest Unit Tests Across All Packages
+
+## Goal
+Add Vitest unit tests to all 6 packages. All packages use ESM with Node16 module resolution and TypeScript strict mode.
+
+## Approach
+- Add vitest + @vitest/coverage-v8 to root devDependencies
+- Each package gets vitest.config.ts and updated test script
+- Use vi.mock() for all external dependencies
+
+## Package-by-package
+
+### core: queue.ts, locks.ts, types.ts
+### mcp-factory: parse.ts, generate.ts, claude-json.ts, validate.ts
+### worker: backends/git.ts, backends/local.ts
+### meta-agent: claude.ts, loops/evolution.ts (regex/shape tests); exclude src/test/ node:test files
+### gateway: all adapters + gateway.ts
+### ui: extract app.ts from index.ts; test REST routes via supertest
+
+---
+
 # PLAN: Dev Infra — docker-compose, install scripts, Quick Start README
 
 ## Task Summary
