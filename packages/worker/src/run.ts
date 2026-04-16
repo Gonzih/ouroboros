@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { getDb, migrate, publish, log } from '@ouroboros/core'
+import { getDb, publish, log } from '@ouroboros/core'
 import type { StorageBackend } from './backends/interface.js'
 import { gitBackend } from './backends/git.js'
 import { localBackend } from './backends/local.js'
@@ -52,8 +52,6 @@ async function updateJobStatus(
 }
 
 export async function run(): Promise<void> {
-  await migrate()
-
   const raw = process.env['OURO_TASK']
   if (!raw) throw new Error('OURO_TASK env var is required')
 
