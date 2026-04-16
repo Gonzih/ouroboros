@@ -1,3 +1,7 @@
+import { migrate } from '@ouroboros/core'
+import { run } from './run.js'
+
 export async function start(): Promise<void> {
-  console.log('worker starting...')
+  await migrate()
+  await run()
 }

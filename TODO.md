@@ -1,17 +1,16 @@
-# TODO: packages/mcp-factory Implementation
+# TODO: packages/worker Implementation
 
-- [ ] Update package.json (add express, zod, @types/express)
-- [ ] Implement src/parse.ts
-- [ ] Implement src/generate.ts
-- [ ] Implement src/validate.ts
-- [ ] Implement src/claude-json.ts
-- [ ] Implement src/server.ts
+- [ ] Create src/backends/interface.ts
+- [ ] Create src/backends/git.ts
+- [ ] Create src/backends/local.ts
+- [ ] Create src/backends/s3.ts
+- [ ] Create src/backends/gdrive.ts
+- [ ] Create src/backends/onedrive.ts
+- [ ] Create src/run.ts
 - [ ] Rewrite src/index.ts
-- [ ] Create src/test/parse.test.ts
-- [ ] Create src/test/generate.test.ts
-- [ ] Create src/test/claude-json.test.ts
+- [ ] Create src/test/backends.test.ts
 - [ ] pnpm install
 - [ ] pnpm build (verify clean compile)
-- [ ] git checkout -b feat/mcp-factory
+- [ ] git checkout -b feat/worker
 - [ ] git commit and push
 - [ ] gh pr create and merge
