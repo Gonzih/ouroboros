@@ -84,6 +84,13 @@
 - [x] ui: `/schedules` route + nav link
 - [x] Tests: 3 scheduler loop tests + 8 schedule API tests (create, list, toggle×2, delete×2, bad cron, missing fields). Total: 197 tests
 
+## v1.0.0 — Schedule management in Control MCP ✅ complete
+
+- [x] mcp-server: `packages/mcp-server/src/tools/schedules.ts` — `list_schedules`, `create_schedule`, `toggle_schedule`, `delete_schedule` tools
+- [x] mcp-server: `croner` added as runtime dependency for cron validation and `next_run_at` computation
+- [x] mcp-server: schedule tools registered in `allTools` and server version bumped to `1.0.0`
+- [x] Tests: 8 schedule tool tests. Total: 205 tests
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

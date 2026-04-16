@@ -7,11 +7,19 @@ vi.mock('@ouroboros/core', () => ({
   enqueue: vi.fn().mockResolvedValue(BigInt(1)),
 }))
 
+vi.mock('croner', () => ({
+  Cron: vi.fn().mockImplementation((expr: string) => {
+    if (expr === 'INVALID') throw new Error('invalid cron')
+    return { nextRun: () => new Date('2026-04-17T09:00:00Z') }
+  }),
+}))
+
 import { getDb, log, publish, enqueue } from '@ouroboros/core'
 import { handleJobTool } from '../tools/jobs.js'
 import { handleMcpTool } from '../tools/mcp.js'
 import { handleFeedbackTool } from '../tools/feedback.js'
 import { handleLogTool } from '../tools/logs.js'
+import { handleScheduleTool } from '../tools/schedules.js'
 
 const mockGetDb = vi.mocked(getDb)
 const mockLog = vi.mocked(log)
@@ -280,5 +288,79 @@ describe('handleLogTool', () => {
 
   it('throws on unknown tool name', async () => {
     await expect(handleLogTool('nonexistent', {})).rejects.toThrow('Unknown log tool')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// schedule tools
+// ---------------------------------------------------------------------------
+describe('handleScheduleTool', () => {
+  it('list_schedules returns JSON array', async () => {
+    const schedules = [{ id: 's1', name: 'daily', cron_expr: '0 9 * * *', enabled: true }]
+    mockGetDb.mockReturnValue(makeDbMock(schedules))
+    const result = await handleScheduleTool('list_schedules', {})
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '[]')
+    expect(Array.isArray(parsed)).toBe(true)
+    expect((parsed as Array<Record<string, unknown>>)[0]?.['name']).toBe('daily')
+  })
+
+  it('create_schedule inserts and returns id', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([]))
+    const result = await handleScheduleTool('create_schedule', {
+      name: 'daily-report',
+      cron_expr: '0 9 * * *',
+      backend: 'local',
+      target: '/tmp/work',
+      instructions: 'Generate daily report',
+    })
+    expect(mockGetDb).toHaveBeenCalledOnce()
+    expect(mockLog).toHaveBeenCalledOnce()
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect(typeof (parsed as Record<string, unknown>)['id']).toBe('string')
+  })
+
+  it('create_schedule returns error for invalid cron expression', async () => {
+    const result = await handleScheduleTool('create_schedule', {
+      name: 'bad',
+      cron_expr: 'INVALID',
+      backend: 'local',
+      target: '/tmp/work',
+      instructions: 'do something',
+    })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['error']).toMatch(/invalid cron/)
+  })
+
+  it('toggle_schedule flips enabled and returns new state', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([{ id: 's1', enabled: false }]))
+    const result = await handleScheduleTool('toggle_schedule', { id: 's1' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['enabled']).toBe(false)
+  })
+
+  it('toggle_schedule returns error when not found', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([]))
+    const result = await handleScheduleTool('toggle_schedule', { id: 'missing' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['error']).toBe('schedule not found')
+  })
+
+  it('delete_schedule returns deleted: true', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([{ id: 's1' }]))
+    const result = await handleScheduleTool('delete_schedule', { id: 's1' })
+    expect(mockLog).toHaveBeenCalledOnce()
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['deleted']).toBe(true)
+  })
+
+  it('delete_schedule returns error when not found', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([]))
+    const result = await handleScheduleTool('delete_schedule', { id: 'missing' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['error']).toBe('schedule not found')
+  })
+
+  it('throws on unknown tool name', async () => {
+    await expect(handleScheduleTool('nonexistent', {})).rejects.toThrow('Unknown schedule tool')
   })
 })

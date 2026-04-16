@@ -1,3 +1,10 @@
+## v1.0.0 — Schedule management in Control MCP
+
+- mcp-server: `packages/mcp-server/src/tools/schedules.ts` — four new MCP tools expose schedule management to Claude: `list_schedules` (list all schedules), `create_schedule` (insert with cron validation via croner, computes `next_run_at`), `toggle_schedule` (flip enabled state), `delete_schedule` (remove by ID). Returns structured JSON; `create_schedule` returns `{ error }` on invalid cron expression without throwing.
+- mcp-server: `croner` added as a runtime dependency so `create_schedule` can validate expressions and compute `next_run_at` consistently with the scheduler loop.
+- mcp-server: server version string bumped to `1.0.0`; all four schedule tools registered in `allTools` and dispatched in `CallToolRequestSchema` handler.
+- Tests: 8 new schedule tool tests (list, create-ok, create-bad-cron, toggle-ok, toggle-404, delete-ok, delete-404, unknown-name). Total: 205 tests across all packages.
+
 ## v0.9.0 — Scheduled jobs + HTTP/HTTPS MCP connector
 
 - mcp-factory: `http` and `https` connection string schemes now resolve to `@modelcontextprotocol/server-fetch`, enabling REST API data sources as MCP connections. Claude can use the `fetch` tool to query any HTTP endpoint registered as an MCP.

@@ -5,12 +5,13 @@ import { jobTools, handleJobTool } from './tools/jobs.js'
 import { mcpTools, handleMcpTool } from './tools/mcp.js'
 import { feedbackTools, handleFeedbackTool } from './tools/feedback.js'
 import { logTools, handleLogTool } from './tools/logs.js'
+import { scheduleTools, handleScheduleTool } from './tools/schedules.js'
 
-const allTools = [...jobTools, ...mcpTools, ...feedbackTools, ...logTools]
+const allTools = [...jobTools, ...mcpTools, ...feedbackTools, ...logTools, ...scheduleTools]
 
 export async function startServer(): Promise<void> {
   const server = new Server(
-    { name: 'ouroboros', version: '0.2.0' },
+    { name: 'ouroboros', version: '1.0.0' },
     { capabilities: { tools: {} } },
   )
 
@@ -24,6 +25,7 @@ export async function startServer(): Promise<void> {
       if (mcpTools.find(t => t.name === name) !== undefined) return handleMcpTool(name, args)
       if (feedbackTools.find(t => t.name === name) !== undefined) return handleFeedbackTool(name, args)
       if (logTools.find(t => t.name === name) !== undefined) return handleLogTool(name, args)
+      if (scheduleTools.find(t => t.name === name) !== undefined) return handleScheduleTool(name, args)
       throw new Error(`Unknown tool: ${name}`)
     } catch (err) {
       return {

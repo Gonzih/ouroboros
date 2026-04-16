@@ -95,6 +95,9 @@ importers:
       '@ouroboros/core':
         specifier: workspace:*
         version: link:../core
+      croner:
+        specifier: ^9.0.0
+        version: 9.1.0
     devDependencies:
       '@types/node':
         specifier: 22.10.7
