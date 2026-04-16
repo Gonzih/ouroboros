@@ -98,7 +98,7 @@ Loop 4 — Watchdog
 - [x] Vue 3 UI on port 7702, MCP factory HTTP on port 7703
 
 ### v0.2 — Cycling Loop (roadmap)
-- [ ] `@ouroboros/mcp-server` — Control MCP exposing Ouroboros internals as tools
+- [x] `@ouroboros/mcp-server` — Control MCP exposing Ouroboros internals as tools
 - [ ] Persistent Claude `--continue` session as meta-agent coordinator
 - [ ] Claude self-diagnosis: `get_logs()` → notice → `submit_feedback()` → auto-propose fix
 - [ ] Long-horizon reasoning: single session accumulates context across all jobs
@@ -220,4 +220,21 @@ packages/
   ui/            Vue 3 web UI (port 7702)
   gateway/       Multi-channel notification bridge
   mcp-factory/   Dynamic MCP provisioning with Claude-based validation (port 7703)
+  mcp-server/    Control plane MCP server — 14 tools over stdio (v0.2)
 ```
+
+## Control Plane MCP (v0.2)
+
+Build the package, then connect Claude to it:
+
+```bash
+# Build
+pnpm --filter @ouroboros/mcp-server build
+
+# Start a persistent Claude session with full control over Ouroboros
+claude --mcp-config claude-control.json --dangerously-skip-permissions --continue
+```
+
+Claude now has 14 tools: `list_jobs`, `get_job_output`, `get_job_status`, `spawn_worker`, `cancel_job`, `list_mcps`, `register_mcp`, `delete_mcp`, `test_mcp`, `submit_feedback`, `list_feedback`, `approve_evolution`, `reject_evolution`, `get_logs`.
+
+With customer data MCPs also mounted, Claude can query customer data **and** control Ouroboros in one persistent session — the cycling loop.

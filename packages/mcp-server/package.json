@@ -1,0 +1,27 @@
+{
+  "name": "@ouroboros/mcp-server",
+  "version": "0.2.0",
+  "description": "Ouroboros control plane MCP server — exposes jobs, MCPs, feedback, and logs as tools",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ouroboros-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@ouroboros/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.7",
+    "typescript": "5.7.3",
+    "vitest": "^1.6.0"
+  }
+}
