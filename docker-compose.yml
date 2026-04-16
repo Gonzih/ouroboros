@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ouroboros-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ouroboros
+      POSTGRES_PASSWORD: ouroboros
+      POSTGRES_DB: ouroboros
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ouroboros -d ouroboros"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
