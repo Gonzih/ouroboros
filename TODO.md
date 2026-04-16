@@ -72,6 +72,18 @@
 - [x] ui: Jobs.vue — retry button for failed/cancelled rows; status filter tabs (all/pending/running/completed/failed/cancelled)
 - [x] Tests: 3 retry-endpoint tests + 1 worker output-publish test; total 186 tests
 
+## v0.9.0 — Scheduled jobs + HTTP/HTTPS MCP connector ✅ complete
+
+- [x] mcp-factory: `http`/`https` scheme support via `@modelcontextprotocol/server-fetch` — registers REST API sources as MCP data connections
+- [x] core: migration `003_schedules.sql` — `ouro_schedules` table (id, name, cron_expr, backend, target, instructions, enabled, last_run_at, next_run_at)
+- [x] meta-agent: `packages/meta-agent/src/loops/scheduler.ts` — `tickScheduler()` checks for due schedules (next_run_at ≤ NOW), creates jobs, enqueues to ouro_tasks, updates next_run_at via `croner`. Runs every 30 s (configurable via `OURO_SCHEDULER_INTERVAL_MS`).
+- [x] meta-agent: `startScheduler()` wired into legacy loop mode alongside worker-dispatch, evolution, mcp-watch
+- [x] ui: `GET /api/schedules`, `POST /api/schedules`, `PATCH /api/schedules/:id/toggle`, `DELETE /api/schedules/:id`
+- [x] ui: `POST /api/schedules` validates cron expression via croner, returns 400 for invalid expr
+- [x] ui: `Schedules.vue` — table with cron, backend, last/next run, enable toggle, delete; create modal with cron hint
+- [x] ui: `/schedules` route + nav link
+- [x] Tests: 3 scheduler loop tests + 8 schedule API tests (create, list, toggle×2, delete×2, bad cron, missing fields). Total: 197 tests
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

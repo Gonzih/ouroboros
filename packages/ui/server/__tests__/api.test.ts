@@ -11,6 +11,14 @@ vi.mock('@ouroboros/core', () => ({
   subscribe: vi.fn().mockResolvedValue(() => undefined),
 }))
 
+// Mock croner — used by the schedule POST route to validate cron expressions
+vi.mock('croner', () => ({
+  Cron: vi.fn().mockImplementation((expr: string) => {
+    if (expr === 'INVALID') throw new Error('invalid cron')
+    return { nextRun: vi.fn().mockReturnValue(new Date('2026-04-17T09:00:00Z')) }
+  }),
+}))
+
 // Mock @ouroboros/gateway/oidc — OURO_OIDC_ISSUER is not set in tests so middleware is not invoked
 vi.mock('@ouroboros/gateway/oidc', () => ({
   createOidcMiddleware: vi.fn().mockResolvedValue((_req: unknown, _res: unknown, next: () => void) => next()),
@@ -198,6 +206,85 @@ describe('UI REST API routes', () => {
       mockDb.mockResolvedValueOnce({ count: 0 })
       mockDb.mockResolvedValueOnce([])
       const res = await request(app).post('/api/jobs/no-such-job/cancel')
+      expect(res.status).toBe(404)
+    })
+  })
+
+  describe('GET /api/schedules', () => {
+    it('returns schedule list from db', async () => {
+      mockDb.mockResolvedValueOnce([
+        { id: 's1', name: 'daily', cron_expr: '0 9 * * *', enabled: true }
+      ])
+      const res = await request(app).get('/api/schedules')
+      expect(res.status).toBe(200)
+      expect(res.body[0].name).toBe('daily')
+    })
+  })
+
+  describe('POST /api/schedules', () => {
+    it('creates a schedule with valid fields', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app)
+        .post('/api/schedules')
+        .send({
+          name: 'daily-summary',
+          cron_expr: '0 9 * * *',
+          backend: 'git',
+          target: 'https://github.com/owner/repo',
+          instructions: 'Summarize today',
+        })
+      expect(res.status).toBe(200)
+      expect(typeof res.body.id).toBe('string')
+    })
+
+    it('returns 400 for missing fields', async () => {
+      const res = await request(app)
+        .post('/api/schedules')
+        .send({ name: 'bad' })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 for invalid cron expression', async () => {
+      const res = await request(app)
+        .post('/api/schedules')
+        .send({
+          name: 'bad-cron',
+          cron_expr: 'INVALID',
+          backend: 'git',
+          target: 'repo',
+          instructions: 'Do something',
+        })
+      expect(res.status).toBe(400)
+      expect(res.body.error).toContain('invalid cron')
+    })
+  })
+
+  describe('PATCH /api/schedules/:id/toggle', () => {
+    it('toggles schedule enabled state', async () => {
+      mockDb.mockResolvedValueOnce([{ id: 's1', enabled: false }])
+      const res = await request(app).patch('/api/schedules/s1/toggle')
+      expect(res.status).toBe(200)
+      expect(res.body.enabled).toBe(false)
+    })
+
+    it('returns 404 when schedule not found', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).patch('/api/schedules/no-such/toggle')
+      expect(res.status).toBe(404)
+    })
+  })
+
+  describe('DELETE /api/schedules/:id', () => {
+    it('deletes an existing schedule', async () => {
+      mockDb.mockResolvedValueOnce([{ id: 's1' }])
+      const res = await request(app).delete('/api/schedules/s1')
+      expect(res.status).toBe(200)
+      expect(res.body.ok).toBe(true)
+    })
+
+    it('returns 404 when schedule not found', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).delete('/api/schedules/no-such')
       expect(res.status).toBe(404)
     })
   })

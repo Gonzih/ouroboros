@@ -11,6 +11,7 @@ useWebSocket()
       <nav class="nav-links">
         <RouterLink to="/">dashboard</RouterLink>
         <RouterLink to="/jobs">jobs</RouterLink>
+        <RouterLink to="/schedules">schedules</RouterLink>
         <RouterLink to="/workers">workers</RouterLink>
         <RouterLink to="/logs">logs</RouterLink>
         <RouterLink to="/feedback">feedback</RouterLink>

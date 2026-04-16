@@ -1,3 +1,12 @@
+## v0.9.0 — Scheduled jobs + HTTP/HTTPS MCP connector
+
+- mcp-factory: `http` and `https` connection string schemes now resolve to `@modelcontextprotocol/server-fetch`, enabling REST API data sources as MCP connections. Claude can use the `fetch` tool to query any HTTP endpoint registered as an MCP.
+- core: migration `003_schedules.sql` adds `ouro_schedules` table — stores recurring job templates with a cron expression, backend, target, instructions, enabled flag, and computed last/next run timestamps.
+- meta-agent: `packages/meta-agent/src/loops/scheduler.ts` — `tickScheduler()` queries for schedules with `next_run_at ≤ NOW()`, inserts a new `ouro_jobs` row and enqueues to `ouro_tasks` for each due schedule, then updates `last_run_at` and computes the next occurrence via `croner`. Scheduler loop polls every 30 s (configurable via `OURO_SCHEDULER_INTERVAL_MS`). `startScheduler()` runs alongside worker-dispatch, evolution, and mcp-watch in legacy mode.
+- ui: `GET /api/schedules` — list all schedules. `POST /api/schedules` — create with name, cron_expr, backend, target, instructions; validates cron expression (returns 400 for invalid expr) and stores computed `next_run_at`. `PATCH /api/schedules/:id/toggle` — flip enabled state. `DELETE /api/schedules/:id` — remove.
+- ui: `Schedules.vue` — table showing cron expression, backend, last and next run timestamps, per-row enable/disable toggle and delete button. Create modal with cron syntax hint. Nav link between jobs and workers.
+- Tests: 3 scheduler loop unit tests (due dispatch, no-op when none due, multi-schedule batch). 8 schedule API tests (200 create, 400 missing fields, 400 invalid cron, 200 list, 200/404 toggle, 200/404 delete). Total: 197 tests.
+
 ## v0.8.0 — Live output push + job retry + job status filter
 
 - worker: `insertOutputLine` now publishes `ouro_notify { type: 'job_output_appended', jobId, line }` after each DB insert. Output lines are pushed to all connected UI clients in real time via the existing LISTEN/NOTIFY → WebSocket pipeline.

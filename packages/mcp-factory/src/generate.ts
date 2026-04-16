@@ -52,11 +52,18 @@ export function generateConfig(scheme: string, connectionString: string): McpSer
       }
     }
 
+    case 'http':
+    case 'https':
+      // http://host or https://host — general-purpose HTTP fetch MCP server.
+      // Claude can use the fetch tool to retrieve content from any URL.
+      return {
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-fetch', connectionString],
+      }
+
     case 's3':
     case 'gdrive':
     case 'onedrive':
-    case 'http':
-    case 'https':
       throw new StubError(scheme)
 
     default:

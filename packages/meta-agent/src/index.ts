@@ -2,6 +2,7 @@ import { migrate, tryAcquireLock, releaseLock, closeDb, getDb, log } from '@ouro
 import { startMcpWatch } from './loops/mcp-watch.js'
 import { startWorkerDispatch } from './loops/worker-dispatch.js'
 import { startEvolution } from './loops/evolution.js'
+import { startScheduler } from './loops/scheduler.js'
 import { watchdogLoop, makeMetaAgentState } from './loops/watchdog.js'
 import { spawnCoordinator } from './coordinator.js'
 
@@ -57,6 +58,7 @@ export async function start(): Promise<void> {
       startMcpWatch(),
       startWorkerDispatch(),
       startEvolution(),
+      startScheduler(),
       watchdogLoop(state),
     ])
   } else {

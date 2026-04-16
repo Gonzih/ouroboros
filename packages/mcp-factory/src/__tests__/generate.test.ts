@@ -67,8 +67,23 @@ describe('generateConfig', () => {
     })
   })
 
+  describe('http/https scheme', () => {
+    it('returns fetch MCP server config for https', () => {
+      const config = generateConfig('https', 'https://api.example.com')
+      expect(config.command).toBe('npx')
+      expect(config.args).toContain('@modelcontextprotocol/server-fetch')
+      expect(config.args).toContain('https://api.example.com')
+    })
+
+    it('returns fetch MCP server config for http', () => {
+      const config = generateConfig('http', 'http://localhost:3000')
+      expect(config.args).toContain('@modelcontextprotocol/server-fetch')
+      expect(config.args).toContain('http://localhost:3000')
+    })
+  })
+
   describe('stub schemes', () => {
-    it.each(['s3', 'gdrive', 'onedrive', 'http', 'https'])('throws StubError for %s', (scheme) => {
+    it.each(['s3', 'gdrive', 'onedrive'])('throws StubError for %s', (scheme) => {
       expect(() => generateConfig(scheme, `${scheme}://example`)).toThrow(StubError)
     })
   })

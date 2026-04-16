@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import express, { type Express, Router } from 'express'
 import { WebSocketServer } from 'ws'
+import { Cron } from 'croner'
 import { getDb, enqueue, log, publish } from '@ouroboros/core'
 import { createOidcMiddleware } from '@ouroboros/gateway/oidc'
 
@@ -301,6 +302,91 @@ apiRouter.get('/workers', async (_req, res) => {
       ORDER BY p.started_at DESC
     `
     res.json(rows)
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+apiRouter.get('/schedules', async (_req, res) => {
+  try {
+    const db = getDb()
+    const rows = await db`
+      SELECT id, name, cron_expr, backend, target, instructions,
+             enabled, last_run_at, next_run_at, created_at
+      FROM ouro_schedules
+      ORDER BY created_at DESC
+    `
+    res.json(rows)
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+apiRouter.post('/schedules', async (req, res) => {
+  const body = req.body as {
+    name?: unknown; cron_expr?: unknown; backend?: unknown; target?: unknown; instructions?: unknown
+  }
+  const { name, cron_expr, backend, target, instructions } = body
+  if (
+    typeof name !== 'string' || !name.trim() ||
+    typeof cron_expr !== 'string' || !cron_expr.trim() ||
+    typeof backend !== 'string' || !backend.trim() ||
+    typeof target !== 'string' || !target.trim() ||
+    typeof instructions !== 'string' || !instructions.trim()
+  ) {
+    res.status(400).json({ error: 'name, cron_expr, backend, target, instructions required' })
+    return
+  }
+  // Validate cron expression
+  let nextRun: Date | null = null
+  try {
+    const cron = new Cron(cron_expr)
+    nextRun = cron.nextRun() ?? null
+  } catch {
+    res.status(400).json({ error: 'invalid cron expression' })
+    return
+  }
+  try {
+    const db = getDb()
+    const id = randomUUID()
+    await db`
+      INSERT INTO ouro_schedules (id, name, cron_expr, backend, target, instructions, next_run_at)
+      VALUES (${id}, ${name}, ${cron_expr}, ${backend}, ${target}, ${instructions}, ${nextRun})
+    `
+    await log('ui', `created schedule "${name}" (${cron_expr})`)
+    res.json({ id })
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+apiRouter.patch('/schedules/:id/toggle', async (req, res) => {
+  const id = req.params['id'] ?? ''
+  if (!id) { res.status(400).json({ error: 'id required' }); return }
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE ouro_schedules
+      SET enabled = NOT enabled
+      WHERE id = ${id}
+      RETURNING id, enabled
+    `
+    if (result.length === 0) { res.status(404).json({ error: 'schedule not found' }); return }
+    res.json({ id, enabled: result[0]?.['enabled'] })
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+apiRouter.delete('/schedules/:id', async (req, res) => {
+  const id = req.params['id'] ?? ''
+  if (!id) { res.status(400).json({ error: 'id required' }); return }
+  try {
+    const db = getDb()
+    const result = await db`DELETE FROM ouro_schedules WHERE id = ${id} RETURNING id`
+    if (result.length === 0) { res.status(404).json({ error: 'schedule not found' }); return }
+    await log('ui', `deleted schedule ${id}`)
+    res.json({ ok: true })
   } catch (err: unknown) {
     res.status(500).json({ error: String(err) })
   }

@@ -5,12 +5,14 @@ import Logs from '../views/Logs.vue'
 import Feedback from '../views/Feedback.vue'
 import McpRegistry from '../views/McpRegistry.vue'
 import Workers from '../views/Workers.vue'
+import Schedules from '../views/Schedules.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', component: Dashboard },
     { path: '/jobs', component: Jobs },
+    { path: '/schedules', component: Schedules },
     { path: '/workers', component: Workers },
     { path: '/logs', component: Logs },
     { path: '/feedback', component: Feedback },
