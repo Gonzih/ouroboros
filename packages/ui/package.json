@@ -1,0 +1,21 @@
+{
+  "name": "@ouroboros/ui",
+  "version": "0.1.0",
+  "description": "Vue 3 + TypeScript + Vite dashboard. Serves on port 7702.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "node --test dist/test/*.js"
+  },
+  "dependencies": {
+    "@ouroboros/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3",
+    "@types/node": "22.10.7"
+  }
+}

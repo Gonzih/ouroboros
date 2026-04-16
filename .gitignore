@@ -5,3 +5,5 @@ dist/
 *.log
 .next/
 .turbo/
+.DS_Store
+*.tsbuildinfo

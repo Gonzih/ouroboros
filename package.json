@@ -1,0 +1,20 @@
+{
+  "name": "ouroboros",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Self-hosted AI data infrastructure — MCP factory + autonomous agents",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm -r --parallel run dev",
+    "start:meta": "pnpm --filter @ouroboros/meta-agent run start",
+    "start:ui": "pnpm --filter @ouroboros/ui run start",
+    "start:gateway": "pnpm --filter @ouroboros/gateway run start",
+    "start:mcp-factory": "pnpm --filter @ouroboros/mcp-factory run start",
+    "test": "pnpm -r run test"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

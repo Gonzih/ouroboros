@@ -1,0 +1,21 @@
+# TODO: Ouroboros Monorepo Bootstrap
+
+- [ ] Update .gitignore with missing entries
+- [ ] Create pnpm-workspace.yaml
+- [ ] Create root package.json
+- [ ] Create tsconfig.base.json
+- [ ] Create .env.example
+- [ ] Create docker-compose.yml (Postgres 16 + pgmq)
+- [ ] Create scripts/install.sh (macOS/Linux supervisor config)
+- [ ] Create scripts/install.ps1 (Windows Task Scheduler)
+- [ ] Create scripts/setup-db.sh
+- [ ] Create packages/core scaffold (package.json, tsconfig.json, src/index.ts, src/types.ts)
+- [ ] Create packages/meta-agent scaffold
+- [ ] Create packages/worker scaffold
+- [ ] Create packages/ui scaffold
+- [ ] Create packages/gateway scaffold
+- [ ] Create packages/mcp-factory scaffold
+- [ ] Run pnpm install
+- [ ] Run pnpm build (verify all stubs compile)
+- [ ] Commit and push branch
+- [ ] Create PR and merge
