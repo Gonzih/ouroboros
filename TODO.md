@@ -20,8 +20,17 @@
 - [x] OIDC auth stub: OURO_OIDC_ISSUER wired in gateway (stub, logs issuer, placeholder for real middleware)
 - [x] Installer scripts: scripts/install.sh (macOS launchd + Linux systemd) + scripts/install.ps1 (Windows Task Scheduler) — already complete from v0.2
 
+## v0.4.0 — Approval HTTP API + Worker Heartbeat Dashboard ✅ complete
+
+- [x] gateway: Express HTTP server on PORT_GATEWAY (default 7701)
+- [x] gateway: POST /approve/:id and POST /reject/:id — update DB + publish ouro_notify events
+- [x] ui: GET /api/processes — list ouro_processes table
+- [x] ui: GET /api/workers — join ouro_processes with ouro_jobs
+- [x] ui: Workers.vue — process table with heartbeat health badges (green/yellow/red)
+- [x] ui: /workers route + nav link
+
 ## Next
 
-- [ ] Push main branch to origin (currently 2 commits ahead)
+- [ ] Push main branch to origin (currently ahead of remote)
 - [ ] npm publish: run `pnpm -r publish --access public` once org namespace `@ouroboros` is claimed
-- [ ] v0.4 scope: OIDC middleware implementation, gateway HTTP endpoint for /approve flow, worker heartbeat dashboard in UI
+- [ ] v0.5 scope: OIDC middleware implementation (real JWT validation via OURO_OIDC_ISSUER)

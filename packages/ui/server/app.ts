@@ -201,6 +201,43 @@ app.delete('/api/mcp/:name', async (req, res) => {
   }
 })
 
+app.get('/api/processes', async (_req, res) => {
+  try {
+    const db = getDb()
+    const rows = await db`
+      SELECT name, pid, command, args, started_at, last_heartbeat
+      FROM ouro_processes
+      ORDER BY started_at DESC
+    `
+    res.json(rows)
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+app.get('/api/workers', async (_req, res) => {
+  try {
+    const db = getDb()
+    // Join running jobs with their process entries (worker:jobId naming convention)
+    const rows = await db`
+      SELECT
+        p.name,
+        p.pid,
+        p.started_at,
+        p.last_heartbeat,
+        j.id AS job_id,
+        j.description AS job_description,
+        j.status AS job_status
+      FROM ouro_processes p
+      LEFT JOIN ouro_jobs j ON p.name = 'worker:' || j.id
+      ORDER BY p.started_at DESC
+    `
+    res.json(rows)
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
 // SPA fallback
 app.get('*', (_req, res) => {
   res.sendFile(join(__dirname, '..', 'client', 'index.html'))

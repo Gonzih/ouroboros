@@ -1,3 +1,13 @@
+## v0.4.0 — Approval HTTP API + Worker Heartbeat Dashboard
+
+- gateway: HTTP server on PORT_GATEWAY (default 7701) with `POST /approve/:id` and `POST /reject/:id`
+  — REST-based evolution approval alongside existing Telegram commands
+  — Publishes `evolution_approved` / `evolution_rejected` events to ouro_notify on status change
+- ui: `GET /api/processes` and `GET /api/workers` endpoints — expose ouro_processes + job join
+- ui: Workers view (`/#/workers`) — active process table with live heartbeat health badges
+  — Green/yellow/red indicators based on last heartbeat age (<1m / 1-5m / >5m)
+  — Auto-refreshes every 30s; shows PID, uptime, job description, job status
+
 ## v0.3.0 — Publish prep
 
 - All publishable packages (core, gateway, mcp-factory, meta-agent, worker) bumped to 0.2.0

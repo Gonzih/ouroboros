@@ -4,6 +4,7 @@ import { TelegramAdapter } from './adapters/telegram.js'
 import { SlackAdapter } from './adapters/slack.js'
 import { WebhookAdapter } from './adapters/webhook.js'
 import { Gateway } from './gateway.js'
+import { startHttpServer } from './http.js'
 import type { ChannelAdapter } from './adapters/log.js'
 
 export async function start(): Promise<void> {
@@ -40,6 +41,8 @@ export async function start(): Promise<void> {
   if (oidcIssuer) {
     await log('gateway', `OIDC issuer configured: ${oidcIssuer} (SSO not yet active — stub only)`)
   }
+
+  startHttpServer()
 
   const gateway = new Gateway(adapters)
 
