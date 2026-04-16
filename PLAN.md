@@ -1,43 +1,57 @@
-# Plan: packages/mcp-server — Ouroboros Control Plane MCP
+# Plan: meta-agent v2 — persistent Claude coordinator session
 
 ## Task Restatement
+Upgrade meta-agent from four Node.js polling loops to a thin supervisor that spawns a persistent Claude session as the actual coordinator. Claude uses the Ouroboros MCP tools (`@ouroboros/mcp-server`) to reason and act. Keep v0.1 loops as `OURO_LEGACY_LOOPS=true` fallback. Watchdog + advisory lock stay in Node.js (must outlive Claude sessions).
 
-Build `packages/mcp-server`: a stdio MCP server that exposes Ouroboros internals (jobs, MCP registry, feedback, logs) as tools Claude can call. This closes the v0.2 cycling loop — Claude becomes the coordinator rather than a passive subagent.
+## Architecture Shift
+```
+v0.1 (before):
+meta-agent Node.js
+  Loop 1: LISTEN/NOTIFY → log MCP registrations
+  Loop 2: poll pgmq every 2s → spawn workers
+  Loop 3: poll pgmq every 5s → spawnSync claude for evolution
+  Loop 4: watchdog every 60s → fix dead PIDs
 
-## Key Findings
+v0.2 (after):
+meta-agent Node.js (thin supervisor)
+  - migrate() + advisory lock + crash recovery + signal handlers (unchanged)
+  - watchdogLoop() stays in Node.js (Claude can't watch its own PID)
+  - spawnCoordinator() → persistent Claude session with --mcp-config claude-control.json
+  - runCoordinatorLoop() → restart Claude on exit with 5s backoff
+  - OURO_LEGACY_LOOPS=true → fallback to v0.1 loops unchanged
+```
 
-- MCP SDK latest stable: `@modelcontextprotocol/sdk@1.29.0`
-- Worker-dispatch expects pgmq messages shaped as `{ id, backend, target, instructions }`
-- `getDb()` returns `postgres.Sql` with tagged-template query interface
-- DB columns are snake_case; TypeScript interfaces are camelCase — return raw JSON from queries
-- All packages use `"type": "module"`, Node16 resolution, `.js` imports
-- `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` — array[0] needs null check; no `obj.prop = undefined`
-- `@types/node@22.10.7` provides global `fetch` — no import needed
-- Vitest pattern: `vi.mock('@ouroboros/core', ...)` + `mockGetDb.mockReturnValue(mockDbFn)`
-- PORT_MCP_FACTORY defaults to 7703
+## Approaches Considered
 
-## Approach
+### A) Full replacement — delete polling loops
+- Pro: minimal code
+- Con: no rollback path if Claude coordinator breaks in production
 
-Implement exactly per spec: stdio transport, 14 tools across 4 tool modules, JSON Schema (no zod), raw pg queries, `fetch` for mcp-factory HTTP calls. Tests mock `@ouroboros/core` and global `fetch`.
+### B) Parallel coexistence — run both simultaneously
+- Pro: belt-and-suspenders
+- Con: double-processes everything, conflicting state writes
 
-## Files to Create
+### C) Feature-flag switch (chosen)
+`OURO_LEGACY_LOOPS=true` switches back to v0.1. Default is v0.2.
+- Pro: explicit rollback, operators can cut over when ready
+- Con: two code paths to maintain
 
-| File | Purpose |
-|------|---------|
-| `packages/mcp-server/package.json` | Package config, MCP SDK dep |
-| `packages/mcp-server/tsconfig.json` | Extends base tsconfig |
-| `packages/mcp-server/vitest.config.ts` | Test config |
-| `packages/mcp-server/src/tools/jobs.ts` | list_jobs, get_job_output, get_job_status, spawn_worker, cancel_job |
-| `packages/mcp-server/src/tools/mcp.ts` | list_mcps, register_mcp, delete_mcp, test_mcp |
-| `packages/mcp-server/src/tools/feedback.ts` | submit_feedback, list_feedback, approve_evolution, reject_evolution |
-| `packages/mcp-server/src/tools/logs.ts` | get_logs |
-| `packages/mcp-server/src/server.ts` | MCP Server wiring |
-| `packages/mcp-server/src/index.ts` | Entry point (migrate + startServer) |
-| `packages/mcp-server/src/__tests__/tools.test.ts` | Unit tests |
-| `claude-control.json` | MCP config for `claude --mcp-config` |
+## Session ID Handling
+`.ouro-session` file in repo root (gitignored):
+- Not present → fresh start: `claude --print -p {coordinator_prompt}`
+- Present → resume: `claude --continue --print -p "Continue coordination..."`
+- Both cases use `--print` to ensure non-interactive subprocess behavior
+- On first start: write 'started' to file immediately after spawn
+- If real UUID is parsed from Claude output: overwrite 'started' with UUID
 
-## Risks
+## Files to Touch
+- `packages/meta-agent/src/coordinator.ts` — NEW
+- `packages/meta-agent/src/index.ts` — add runCoordinatorLoop(), OURO_LEGACY_LOOPS branch
+- `packages/meta-agent/src/__tests__/coordinator.test.ts` — NEW
+- `.gitignore` — add .ouro-session, logs/, *.err
+- `.env.example` — add OURO_LEGACY_LOOPS
 
-- MCP SDK import paths may differ in v1.29.0 vs what spec assumes — fix during build
-- `exactOptionalPropertyTypes` requires care when building insert objects with optional fields
-- `postgres.js` tagged templates with null parameters need to be tested — use NULL conditionals from spec
+## Risks & Unknowns
+- `noUncheckedIndexedAccess: true` — regex `match?.[1]` returns `string | undefined`, guard before use
+- `--continue` requires same cwd as original session — guaranteed via `cwd: repoRoot`
+- Claude output session ID parsing is best-effort; placeholder 'started' handles the case where no UUID appears

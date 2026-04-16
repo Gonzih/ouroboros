@@ -3,7 +3,10 @@ dist/
 .env
 .env.local
 *.log
+*.err
 .next/
 .turbo/
 .DS_Store
 *.tsbuildinfo
+.ouro-session
+logs/
