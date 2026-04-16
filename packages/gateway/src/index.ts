@@ -35,14 +35,8 @@ export async function start(): Promise<void> {
     adapters.push(new WebhookAdapter(webhookUrl))
   }
 
-  // OIDC: stub — set OURO_OIDC_ISSUER to enable enterprise SSO (not active in v1)
-  // When OIDC is implemented, wire middleware here before gateway.start()
-  const oidcIssuer = process.env['OURO_OIDC_ISSUER']
-  if (oidcIssuer) {
-    await log('gateway', `OIDC issuer configured: ${oidcIssuer} (SSO not yet active — stub only)`)
-  }
-
-  startHttpServer()
+  // startHttpServer handles OIDC middleware setup when OURO_OIDC_ISSUER is set
+  await startHttpServer()
 
   const gateway = new Gateway(adapters)
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import request from 'supertest'
 
 // Mock all @ouroboros/core before importing the app
@@ -8,6 +8,11 @@ vi.mock('@ouroboros/core', () => ({
   enqueue: vi.fn().mockResolvedValue(1n),
   log: vi.fn().mockResolvedValue(undefined),
   subscribe: vi.fn().mockResolvedValue(() => undefined),
+}))
+
+// Mock @ouroboros/gateway/oidc — OURO_OIDC_ISSUER is not set in tests so middleware is not invoked
+vi.mock('@ouroboros/gateway/oidc', () => ({
+  createOidcMiddleware: vi.fn().mockResolvedValue((_req: unknown, _res: unknown, next: () => void) => next()),
 }))
 
 // Mock ws to avoid port binding
@@ -33,10 +38,15 @@ vi.mock('node:http', async (importOriginal) => {
   }
 })
 
-import { app } from '../app.js'
+import { app, mountRoutes } from '../app.js'
 import { enqueue } from '@ouroboros/core'
 
 const mockEnqueue = vi.mocked(enqueue)
+
+// Mount routes once before all tests (OIDC is skipped — OURO_OIDC_ISSUER not set)
+beforeAll(async () => {
+  await mountRoutes()
+})
 
 describe('UI REST API routes', () => {
   beforeEach(() => { vi.clearAllMocks() })

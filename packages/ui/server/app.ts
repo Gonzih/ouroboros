@@ -2,9 +2,10 @@ import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import express, { type Express } from 'express'
+import express, { type Express, Router } from 'express'
 import { WebSocketServer } from 'ws'
 import { getDb, enqueue, log } from '@ouroboros/core'
+import { createOidcMiddleware } from '@ouroboros/gateway/oidc'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -37,9 +38,11 @@ export function broadcast(msg: unknown): void {
   }
 }
 
-// ---- REST routes ----
+// ---- REST routes (defined on a router, mounted via mountRoutes) ----
 
-app.get('/api/health', async (_req, res) => {
+const apiRouter = Router()
+
+apiRouter.get('/health', async (_req, res) => {
   try {
     const db = getDb()
     const rows = await db<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM ouro_jobs WHERE status = 'running'`
@@ -50,7 +53,7 @@ app.get('/api/health', async (_req, res) => {
   }
 })
 
-app.get('/api/jobs', async (_req, res) => {
+apiRouter.get('/jobs', async (_req, res) => {
   try {
     const db = getDb()
     const rows = await db`
@@ -66,7 +69,7 @@ app.get('/api/jobs', async (_req, res) => {
   }
 })
 
-app.get('/api/jobs/:id/output', async (req, res) => {
+apiRouter.get('/jobs/:id/output', async (req, res) => {
   const id = req.params['id'] ?? ''
   if (!id) { res.status(400).json({ error: 'id required' }); return }
   try {
@@ -82,7 +85,7 @@ app.get('/api/jobs/:id/output', async (req, res) => {
   }
 })
 
-app.get('/api/mcp', async (_req, res) => {
+apiRouter.get('/mcp', async (_req, res) => {
   try {
     const db = getDb()
     const rows = await db`
@@ -97,7 +100,7 @@ app.get('/api/mcp', async (_req, res) => {
   }
 })
 
-app.get('/api/feedback', async (_req, res) => {
+apiRouter.get('/feedback', async (_req, res) => {
   try {
     const db = getDb()
     const rows = await db`
@@ -112,7 +115,7 @@ app.get('/api/feedback', async (_req, res) => {
   }
 })
 
-app.get('/api/logs', async (_req, res) => {
+apiRouter.get('/logs', async (_req, res) => {
   try {
     const db = getDb()
     const rows = await db`
@@ -127,7 +130,7 @@ app.get('/api/logs', async (_req, res) => {
   }
 })
 
-app.post('/api/feedback', async (req, res) => {
+apiRouter.post('/feedback', async (req, res) => {
   const body = req.body as { text?: unknown }
   const text = body.text
   if (typeof text !== 'string' || !text.trim()) {
@@ -148,7 +151,7 @@ app.post('/api/feedback', async (req, res) => {
   }
 })
 
-app.post('/api/task', async (req, res) => {
+apiRouter.post('/task', async (req, res) => {
   const body = req.body as { instructions?: unknown; backend?: unknown; target?: unknown }
   const instructions = body.instructions
   const backend = body.backend
@@ -173,7 +176,7 @@ app.post('/api/task', async (req, res) => {
   }
 })
 
-app.post('/api/mcp/register', async (req, res) => {
+apiRouter.post('/mcp/register', async (req, res) => {
   try {
     const response = await fetch(`${MCP_FACTORY_URL}/mcp/register`, {
       method: 'POST',
@@ -187,7 +190,7 @@ app.post('/api/mcp/register', async (req, res) => {
   }
 })
 
-app.delete('/api/mcp/:name', async (req, res) => {
+apiRouter.delete('/mcp/:name', async (req, res) => {
   const name = req.params['name'] ?? ''
   if (!name) { res.status(400).json({ error: 'name required' }); return }
   try {
@@ -201,7 +204,7 @@ app.delete('/api/mcp/:name', async (req, res) => {
   }
 })
 
-app.get('/api/processes', async (_req, res) => {
+apiRouter.get('/processes', async (_req, res) => {
   try {
     const db = getDb()
     const rows = await db`
@@ -215,7 +218,7 @@ app.get('/api/processes', async (_req, res) => {
   }
 })
 
-app.get('/api/workers', async (_req, res) => {
+apiRouter.get('/workers', async (_req, res) => {
   try {
     const db = getDb()
     // Join running jobs with their process entries (worker:jobId naming convention)
@@ -238,8 +241,25 @@ app.get('/api/workers', async (_req, res) => {
   }
 })
 
-// SPA fallback
-app.get('*', (_req, res) => {
-  res.sendFile(join(__dirname, '..', 'client', 'index.html'))
-})
+/**
+ * Mount OIDC middleware (if OURO_OIDC_ISSUER is set) then the API router.
+ * Must be called before server.listen() so middleware order is correct.
+ */
+export async function mountRoutes(): Promise<void> {
+  const oidcIssuer = process.env['OURO_OIDC_ISSUER']
+  if (oidcIssuer) {
+    try {
+      const oidcMiddleware = await createOidcMiddleware({ issuer: oidcIssuer })
+      app.use('/api', oidcMiddleware)
+      await log('ui', `OIDC middleware active on /api — issuer: ${oidcIssuer}`)
+    } catch (err: unknown) {
+      await log('ui', `OIDC setup failed, /api routes unprotected: ${String(err)}`)
+    }
+  }
+  app.use('/api', apiRouter)
 
+  // SPA fallback — must be last
+  app.get('*', (_req, res) => {
+    res.sendFile(join(__dirname, '..', 'client', 'index.html'))
+  })
+}

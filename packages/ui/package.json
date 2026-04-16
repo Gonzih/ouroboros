@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ouroboros/core": "workspace:*",
+    "@ouroboros/gateway": "workspace:*",
     "express": "4.21.2",
     "vue": "3.5.13",
     "vue-router": "4.5.0",

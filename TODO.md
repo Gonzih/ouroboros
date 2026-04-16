@@ -29,8 +29,17 @@
 - [x] ui: Workers.vue — process table with heartbeat health badges (green/yellow/red)
 - [x] ui: /workers route + nav link
 
-## Next
+## v0.5.0 — OIDC Middleware (real JWT validation) ✅ complete
+
+- [x] Add `jose` to gateway + UI package dependencies (zero-dep JWKS + JWT validation)
+- [x] `packages/gateway/src/oidc.ts` — `createOidcMiddleware(issuer)`: fetch discovery doc, cache JWKS, validate Bearer tokens
+- [x] Apply middleware to gateway HTTP routes (`/approve/:id`, `/reject/:id`) when `OURO_OIDC_ISSUER` is set
+- [x] Apply same middleware to UI server `/api/*` routes when `OURO_OIDC_ISSUER` is set
+- [x] `packages/gateway/src/__tests__/oidc.test.ts` — unit tests with mock JWKS + valid/expired/tampered tokens
+- [x] Update `.env.example` with `OURO_OIDC_ISSUER` example value and doc comment
+- [x] Remove stub OIDC log from gateway index; real activation log in startHttpServer
+
+## Pending
 
 - [ ] Push main branch to origin (currently ahead of remote)
 - [ ] npm publish: run `pnpm -r publish --access public` once org namespace `@ouroboros` is claimed
-- [ ] v0.5 scope: OIDC middleware implementation (real JWT validation via OURO_OIDC_ISSUER)

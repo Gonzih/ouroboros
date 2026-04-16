@@ -1,10 +1,13 @@
 import { fileURLToPath } from 'node:url'
-import { server, broadcast } from './app.js'
+import { server, broadcast, mountRoutes } from './app.js'
 import { subscribe, log } from '@ouroboros/core'
 
 const PORT = parseInt(process.env['PORT_UI'] ?? '7702', 10)
 
 export async function start(): Promise<void> {
+  // Mount OIDC middleware + API routes before server starts accepting connections
+  await mountRoutes()
+
   const unsub = await subscribe('ouro_notify', async (payload: unknown) => {
     broadcast({ type: 'notify', payload })
   })

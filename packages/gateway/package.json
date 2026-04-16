@@ -5,6 +5,16 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./oidc": {
+      "import": "./dist/oidc.js",
+      "types": "./dist/oidc.d.ts"
+    }
+  },
   "files": ["dist", "README.md"],
   "publishConfig": {
     "access": "public"
@@ -23,6 +33,7 @@
   "dependencies": {
     "@ouroboros/core": "workspace:*",
     "express": "^4.21.2",
+    "jose": "^6.2.2",
     "node-telegram-bot-api": "^0.66.0"
   },
   "devDependencies": {
