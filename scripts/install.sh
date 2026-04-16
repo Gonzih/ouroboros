@@ -8,12 +8,33 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$REPO_ROOT/.env"
 
-# ── Load env vars ────────────────────────────────────────────────────────────
+# ── Check prerequisites ──────────────────────────────────────────────────────
+
+command -v node >/dev/null 2>&1 || { echo "ERROR: Node.js is required. Install from https://nodejs.org" >&2; exit 1; }
+command -v pnpm >/dev/null 2>&1 || { echo "ERROR: pnpm is required. Run: npm install -g pnpm" >&2; exit 1; }
+command -v claude >/dev/null 2>&1 || { echo "ERROR: Claude Code CLI is required. Install from https://claude.ai/code" >&2; exit 1; }
+command -v psql >/dev/null 2>&1 || echo "Warning: psql not found. Ensure DATABASE_URL points to a running Postgres."
+
+# ── Bootstrap .env ───────────────────────────────────────────────────────────
 
 if [ ! -f "$ENV_FILE" ]; then
+  if [ -f "$REPO_ROOT/.env.example" ]; then
+    cp "$REPO_ROOT/.env.example" "$ENV_FILE"
+    echo "Created .env from .env.example — edit it before starting services"
+    echo "Required: DATABASE_URL, CLAUDE_CODE_OAUTH_TOKEN, OURO_REPO_ROOT"
+    exit 0
+  fi
   echo "ERROR: $ENV_FILE not found. Copy .env.example to .env and fill in values." >&2
   exit 1
 fi
+
+# ── Install and build ────────────────────────────────────────────────────────
+
+echo "Installing dependencies..."
+cd "$REPO_ROOT"
+pnpm install
+echo "Building packages..."
+pnpm build
 
 # Read key vars from .env (ignoring comments and blank lines)
 _get_env() {
