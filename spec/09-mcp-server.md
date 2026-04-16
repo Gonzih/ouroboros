@@ -1,8 +1,17 @@
 # Spec: packages/mcp-server (v0.2 roadmap)
 
-## Status: Roadmap — not yet implemented
+## Status: Implemented (v0.2.0)
 
 This package closes the Ouroboros cycling loop. It exposes Ouroboros internals as MCP tools so Claude can control the system directly, replacing the Node.js polling coordinator.
+
+Implemented tools (14 total):
+- **Jobs**: `list_jobs`, `get_job_output`, `get_job_status`, `spawn_worker`, `cancel_job`
+- **MCP**: `list_mcps`, `register_mcp`
+- **Feedback**: `submit_feedback`, `list_feedback`, `approve_evolution`, `reject_evolution`
+- **Logs**: `get_logs`
+
+Entry point: `packages/mcp-server/dist/index.js` (stdio MCP transport).
+Mounted via `claude-control.json` in the coordinator session.
 
 ---
 
