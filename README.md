@@ -61,6 +61,75 @@ PORT_UI                   optional   default 7702
 PORT_MCP_FACTORY          optional   default 7703
 ```
 
+## Quick Start
+
+### Prerequisites
+- Node.js 22+
+- pnpm (`npm install -g pnpm`)
+- Claude Code CLI (install from https://claude.ai/code, authenticate with your enterprise account)
+- Postgres 14+ with pgmq extension (or use Docker)
+
+### 1. Start Postgres
+
+```bash
+docker-compose up -d
+```
+
+### 2. Install
+
+```bash
+# macOS / Linux
+chmod +x scripts/install.sh && ./scripts/install.sh
+
+# Windows (PowerShell)
+.\scripts\install.ps1
+```
+
+The installer will:
+- Check prerequisites
+- Create `.env` from `.env.example` on first run (then re-run after editing)
+- Run `pnpm install && pnpm build`
+- Register the meta-agent as a background service (launchd / systemd / Task Scheduler)
+
+### 3. Configure
+
+Edit `.env`:
+```
+DATABASE_URL=postgres://ouroboros:ouroboros@localhost:5432/ouroboros
+CLAUDE_CODE_OAUTH_TOKEN=<your token from claude.ai/settings>
+OURO_REPO_ROOT=/absolute/path/to/this/checkout
+```
+
+Then re-run the install script to register the service with the correct values.
+
+### 4. Start Services
+
+```bash
+# macOS (after install.sh)
+launchctl load ~/Library/LaunchAgents/com.ouroboros.meta-agent.plist
+
+# Linux (after install.sh)
+systemctl --user enable --now ouroboros-meta-agent
+
+# Dev (no supervisor)
+pnpm --filter @ouroboros/meta-agent start &
+pnpm --filter @ouroboros/gateway start &
+pnpm --filter @ouroboros/ui start
+```
+
+### 5. Connect Your Data
+
+Open http://localhost:7702 → MCP Registry → Register
+
+```
+name: my-database
+connection: postgres://user:pass@host/mydb
+```
+
+Ouroboros validates the connection with Claude, patches `~/.claude.json`, and Claude can now query your database.
+
+---
+
 ## Packages
 
 ```

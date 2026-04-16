@@ -7,12 +7,39 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $EnvFile = Join-Path $RepoRoot ".env"
 
-# ── Load env vars ─────────────────────────────────────────────────────────────
+# ── Check prerequisites ───────────────────────────────────────────────────────
+
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    throw "Node.js is required. Install from https://nodejs.org"
+}
+if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    throw "pnpm is required. Run: npm install -g pnpm"
+}
+if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+    throw "Claude Code CLI is required. Install from https://claude.ai/code"
+}
+
+# ── Bootstrap .env ────────────────────────────────────────────────────────────
 
 if (-not (Test-Path $EnvFile)) {
-    Write-Error ".env not found at $EnvFile. Copy .env.example to .env and fill in values."
-    exit 1
+    $EnvExample = Join-Path $RepoRoot ".env.example"
+    if (Test-Path $EnvExample) {
+        Copy-Item $EnvExample $EnvFile
+        Write-Host "Created .env from .env.example — edit it before starting services"
+        Write-Host "Required: DATABASE_URL, CLAUDE_CODE_OAUTH_TOKEN, OURO_REPO_ROOT"
+        exit 0
+    }
+    throw ".env not found at $EnvFile. Copy .env.example to .env and fill in values."
 }
+
+# ── Install and build ─────────────────────────────────────────────────────────
+
+Write-Host "Installing dependencies..."
+Push-Location $RepoRoot
+& pnpm install
+Write-Host "Building packages..."
+& pnpm build
+Pop-Location
 
 function Get-EnvVar($key) {
     $line = Get-Content $EnvFile | Where-Object { $_ -match "^$key=" } | Select-Object -First 1
