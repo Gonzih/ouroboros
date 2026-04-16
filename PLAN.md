@@ -1,35 +1,45 @@
-# PLAN: packages/mcp-factory — Full Implementation
+# PLAN: packages/worker — Full Implementation
 
 ## Task Restatement
-Implement the primary value package of Ouroboros: mcp-factory. A customer provides a connection string; the system parses it, generates an MCP server config, validates it by spawning Claude with the config, persists the result to ouro_mcp_registry, patches ~/.claude.json, and exposes an HTTP API on port 7703.
+Implement a stateless task executor in `packages/worker`. It reads a task from the `OURO_TASK` env var, spawns a claude subprocess against a storage backend (git, local, or stubbed s3/gdrive/onedrive), streams output line-by-line to Postgres (`ouro_job_output`), commits changes on success, and exits.
 
-## Approach
+## Approaches Considered
 
-Single approach — implement all modules per spec, with testability built in via optional file path param for claude-json patching:
+### A: Monolithic run.ts (no abstraction layers)
+All backend logic and runner logic in one file. Simple, but not extensible and hard to test.
 
-1. `parse.ts` — pure string parser, no I/O, easily testable
-2. `generate.ts` — pure function mapping scheme → McpServerConfig
-3. `validate.ts` — spawnSync claude subprocess with temp config
-4. `claude-json.ts` — atomic read/patch/write of ~/.claude.json
-5. `server.ts` — Express routes with Zod validation
-6. `index.ts` — entry point wiring everything together
+### B: Backend interface + separate files per backend + thin run.ts (chosen)
+Interface in `backends/interface.ts`, each backend in its own file, `run.ts` just orchestrates. Clean, testable, matches spec exactly.
+
+### C: Backend factory with dynamic import
+Lazy-load backend modules. Over-engineered for this v1 — just use a switch statement.
+
+## Chosen Approach: B
+Matches the spec and existing project style (plain functions and interfaces, no classes). Each backend file is independently testable.
 
 ## Files to Touch
-- packages/mcp-factory/package.json (add express, zod, @types/express)
-- packages/mcp-factory/src/parse.ts (NEW)
-- packages/mcp-factory/src/generate.ts (NEW)
-- packages/mcp-factory/src/validate.ts (NEW)
-- packages/mcp-factory/src/claude-json.ts (NEW)
-- packages/mcp-factory/src/server.ts (NEW)
-- packages/mcp-factory/src/index.ts (rewrite stub)
-- packages/mcp-factory/src/test/parse.test.ts (NEW)
-- packages/mcp-factory/src/test/generate.test.ts (NEW)
-- packages/mcp-factory/src/test/claude-json.test.ts (NEW)
+- `packages/worker/src/backends/interface.ts` (create)
+- `packages/worker/src/backends/git.ts` (create)
+- `packages/worker/src/backends/local.ts` (create)
+- `packages/worker/src/backends/s3.ts` (create)
+- `packages/worker/src/backends/gdrive.ts` (create)
+- `packages/worker/src/backends/onedrive.ts` (create)
+- `packages/worker/src/run.ts` (create)
+- `packages/worker/src/index.ts` (overwrite skeleton)
+- `packages/worker/src/test/backends.test.ts` (create)
 
-## Risks
-- noUncheckedIndexedAccess: rows[0] returns T | undefined — must guard
-- exactOptionalPropertyTypes: cannot set optional field to undefined explicitly
-- Node16 module resolution: all relative imports need .js extension
-- claude binary may not be on PATH in CI — validate.ts calls are tested structurally only
-- Atomic rename on Windows: fs.renameSync overwrites destination atomically since Node 12.9 on Windows, so this should be fine
-- GitHub token not in env for github:// scheme — handle gracefully
+## Key Design Decisions
+- Use `spawnSync` for git/gh commands (synchronous is fine, they are short-lived)
+- Use `spawn` + readline for claude (async streaming of output)
+- Idle detection: track `lastOutputAt`, check every 60s, warn if > 600s
+- Output goes to `ouro_job_output` table (Postgres only — no Redis per CLAUDE.md)
+- `NOTIFY 'ouro_notify'` on job completion
+- `cleanup()` always runs in a finally block
+- TaskInput `backend` field is a string name, select via switch
+
+## Risks & Unknowns
+- `gh` CLI must be installed and authenticated for GitBackend
+- `spawnSync` on git clone can hang on auth prompt — set timeout option
+- The `ouro_job_output` table may not exist if migrate() hasn't run — we call migrate() first in start()
+- Cross-platform path separators: use `path.join` everywhere
+- noUncheckedIndexedAccess from tsconfig.base.json — must guard all array accesses
