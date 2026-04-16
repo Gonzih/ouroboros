@@ -2,6 +2,7 @@ import { migrate, tryAcquireLock, releaseLock, closeDb, getDb, log } from '@ouro
 import { startMcpWatch } from './loops/mcp-watch.js'
 import { startWorkerDispatch } from './loops/worker-dispatch.js'
 import { startEvolution } from './loops/evolution.js'
+import { watchdogLoop, makeMetaAgentState } from './loops/watchdog.js'
 
 export async function start(): Promise<void> {
   await migrate()
@@ -29,9 +30,12 @@ export async function start(): Promise<void> {
 
   await log('meta-agent', `started (PID ${process.pid})`)
 
+  const state = makeMetaAgentState()
+
   await Promise.all([
     startMcpWatch(),
     startWorkerDispatch(),
     startEvolution(),
+    watchdogLoop(state),
   ])
 }
