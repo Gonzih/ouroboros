@@ -1,21 +1,17 @@
-# TODO: Ouroboros Monorepo Bootstrap
+# TODO: packages/mcp-factory Implementation
 
-- [ ] Update .gitignore with missing entries
-- [ ] Create pnpm-workspace.yaml
-- [ ] Create root package.json
-- [ ] Create tsconfig.base.json
-- [ ] Create .env.example
-- [ ] Create docker-compose.yml (Postgres 16 + pgmq)
-- [ ] Create scripts/install.sh (macOS/Linux supervisor config)
-- [ ] Create scripts/install.ps1 (Windows Task Scheduler)
-- [ ] Create scripts/setup-db.sh
-- [ ] Create packages/core scaffold (package.json, tsconfig.json, src/index.ts, src/types.ts)
-- [ ] Create packages/meta-agent scaffold
-- [ ] Create packages/worker scaffold
-- [ ] Create packages/ui scaffold
-- [ ] Create packages/gateway scaffold
-- [ ] Create packages/mcp-factory scaffold
-- [ ] Run pnpm install
-- [ ] Run pnpm build (verify all stubs compile)
-- [ ] Commit and push branch
-- [ ] Create PR and merge
+- [ ] Update package.json (add express, zod, @types/express)
+- [ ] Implement src/parse.ts
+- [ ] Implement src/generate.ts
+- [ ] Implement src/validate.ts
+- [ ] Implement src/claude-json.ts
+- [ ] Implement src/server.ts
+- [ ] Rewrite src/index.ts
+- [ ] Create src/test/parse.test.ts
+- [ ] Create src/test/generate.test.ts
+- [ ] Create src/test/claude-json.test.ts
+- [ ] pnpm install
+- [ ] pnpm build (verify clean compile)
+- [ ] git checkout -b feat/mcp-factory
+- [ ] git commit and push
+- [ ] gh pr create and merge
