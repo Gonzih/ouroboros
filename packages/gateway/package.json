@@ -1,10 +1,19 @@
 {
   "name": "@ouroboros/gateway",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ChannelAdapter: Telegram, Slack, webhook. Notification dispatch.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ouroboros-ai/ouroboros",
+    "directory": "packages/gateway"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

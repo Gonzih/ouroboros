@@ -1,6 +1,6 @@
 {
   "name": "@ouroboros/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared types, Postgres client, logger, event bus",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,15 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ouroboros-ai/ouroboros",
+    "directory": "packages/core"
   },
   "scripts": {
     "build": "tsc",

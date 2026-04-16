@@ -1,10 +1,19 @@
 {
   "name": "@ouroboros/meta-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Coordinator: MCP watch, worker dispatch, self-evolution",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ouroboros-ai/ouroboros",
+    "directory": "packages/meta-agent"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

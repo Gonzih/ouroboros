@@ -1,3 +1,12 @@
+## v0.3.0 — Publish prep
+
+- All publishable packages (core, gateway, mcp-factory, meta-agent, worker) bumped to 0.2.0
+- Added `publishConfig`, `files`, and `repository` fields to all package manifests
+- OIDC auth stub: OURO_OIDC_ISSUER env var wired in gateway — logs issuer, placeholder for real middleware
+- Installer scripts already complete (macOS launchd + Linux systemd + Windows Task Scheduler)
+
+Ready to `pnpm -r publish --access public` once `@ouroboros` npm org namespace is claimed.
+
 ## v0.2.0 — Cycling Loop
 
 - packages/mcp-server: Control plane MCP server — 14 tools exposing full Ouroboros internals
