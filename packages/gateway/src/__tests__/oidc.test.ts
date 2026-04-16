@@ -148,6 +148,38 @@ describe('createOidcMiddleware', () => {
     expect((raw.body as { error: string }).error).toMatch(/token validation failed/)
   })
 
+  it('fetches the OIDC discovery doc when no jwksUri override is given', async () => {
+    // Build a fresh JWKS data URI for this test (unique URI avoids jwksCache collision)
+    const jwk = await exportJWK(keyPair.publicKey)
+    jwk.use = 'sig'
+    jwk.kid = 'discovery-test-key'
+    const discoveryJwksUri = `data:application/json;base64,${Buffer.from(JSON.stringify({ keys: [jwk] })).toString('base64')}&discovery=1`
+
+    const DISCOVERY_ISSUER = 'https://discovery-test.example.internal'
+    const discoveryDoc = { issuer: DISCOVERY_ISSUER, jwks_uri: discoveryJwksUri }
+
+    // Use vi.stubGlobal so vitest automatically restores fetch after the test
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/.well-known/openid-configuration')) {
+        return new Response(JSON.stringify(discoveryDoc), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+
+    try {
+      // createOidcMiddleware with no jwksUri must call fetch for the discovery doc
+      await createOidcMiddleware({ issuer: DISCOVERY_ISSUER })
+      expect(vi.mocked(global.fetch)).toHaveBeenCalledWith(
+        `${DISCOVERY_ISSUER}/.well-known/openid-configuration`
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('returns 401 for a tampered token', async () => {
     const middleware = await makeMiddleware()
     const token = await signToken()

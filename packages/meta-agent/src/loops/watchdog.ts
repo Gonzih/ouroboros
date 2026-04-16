@@ -25,9 +25,11 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+const WATCHDOG_INTERVAL_MS = parseInt(process.env['OURO_WATCHDOG_INTERVAL_MS'] ?? '60000', 10)
+
 export async function watchdogLoop(state: MetaAgentState): Promise<void> {
   while (true) {
-    await sleep(60_000)
+    await sleep(WATCHDOG_INTERVAL_MS)
 
     // 1. Find stale running jobs (no heartbeat > 10 min)
     try {

@@ -1,63 +1,104 @@
 import { createServer } from 'node:http'
 import express from 'express'
+import type { Router } from 'express'
 import { getDb, publish, log } from '@ouroboros/core'
 import { createOidcMiddleware } from './oidc.js'
 
 export const PORT_GATEWAY = parseInt(process.env['PORT_GATEWAY'] ?? '7701', 10)
 
-const app = express()
-app.use(express.json())
+const RATE_LIMIT_MS = 10_000  // 10 seconds per feedback ID
 
-// Routes are on a sub-router so OIDC middleware can be mounted before them
-const router = express.Router()
+/**
+ * Creates a fresh Express router with idempotency + rate-limit guards on
+ * /approve/:id and /reject/:id. Returns a new router each call so tests
+ * get clean rate-limiter state.
+ */
+export function createRouter(): Router {
+  const router = express.Router()
+  const recentRequests = new Map<string, number>()
 
-// POST /approve/:id — approve an evolution proposal
-router.post('/approve/:id', async (req, res) => {
-  const id = req.params['id'] ?? ''
-  if (!id) { res.status(400).json({ error: 'id required' }); return }
-  try {
-    const db = getDb()
-    const result = await db`
-      UPDATE ouro_feedback SET status = 'approved' WHERE id = ${id} RETURNING id
-    `
-    if (result.length === 0) {
-      res.status(404).json({ error: `no feedback found with id ${id}` })
+  function isRateLimited(id: string): boolean {
+    const last = recentRequests.get(id)
+    if (last !== undefined && Date.now() - last < RATE_LIMIT_MS) return true
+    recentRequests.set(id, Date.now())
+    return false
+  }
+
+  // POST /approve/:id — approve an evolution proposal
+  router.post('/approve/:id', async (req, res) => {
+    const id = req.params['id'] ?? ''
+    if (!id) { res.status(400).json({ error: 'id required' }); return }
+    if (isRateLimited(id)) {
+      res.status(429).json({ error: 'rate limit: wait before re-submitting this id' })
       return
     }
-    await publish('ouro_notify', { type: 'evolution_approved', id })
-    await log('gateway:http', `evolution ${id} approved via HTTP`)
-    res.json({ id, status: 'approved' })
-  } catch (err: unknown) {
-    await log('gateway:http', `approve error: ${String(err)}`)
-    res.status(500).json({ error: String(err) })
-  }
-})
+    try {
+      const db = getDb()
+      const result = await db`
+        UPDATE ouro_feedback SET status = 'approved'
+        WHERE id = ${id} AND status NOT IN ('approved', 'rejected')
+        RETURNING id
+      `
+      if (result.length === 0) {
+        const existing = await db`SELECT status FROM ouro_feedback WHERE id = ${id}`
+        if (existing.length > 0) {
+          res.status(409).json({ error: `feedback ${id} is already ${String(existing[0]?.['status'])}` })
+        } else {
+          res.status(404).json({ error: `no feedback found with id ${id}` })
+        }
+        return
+      }
+      await publish('ouro_notify', { type: 'evolution_approved', id })
+      await log('gateway:http', `evolution ${id} approved via HTTP`)
+      res.json({ id, status: 'approved' })
+    } catch (err: unknown) {
+      await log('gateway:http', `approve error: ${String(err)}`)
+      res.status(500).json({ error: String(err) })
+    }
+  })
 
-// POST /reject/:id — reject an evolution proposal
-router.post('/reject/:id', async (req, res) => {
-  const id = req.params['id'] ?? ''
-  if (!id) { res.status(400).json({ error: 'id required' }); return }
-  const body = req.body as { reason?: unknown }
-  const reason = typeof body.reason === 'string' ? body.reason : undefined
-  try {
-    const db = getDb()
-    const result = await db`
-      UPDATE ouro_feedback SET status = 'rejected' WHERE id = ${id} RETURNING id
-    `
-    if (result.length === 0) {
-      res.status(404).json({ error: `no feedback found with id ${id}` })
+  // POST /reject/:id — reject an evolution proposal
+  router.post('/reject/:id', async (req, res) => {
+    const id = req.params['id'] ?? ''
+    if (!id) { res.status(400).json({ error: 'id required' }); return }
+    if (isRateLimited(id)) {
+      res.status(429).json({ error: 'rate limit: wait before re-submitting this id' })
       return
     }
-    await publish('ouro_notify', { type: 'evolution_rejected', id, reason })
-    await log('gateway:http', `evolution ${id} rejected via HTTP${reason ? `: ${reason}` : ''}`)
-    res.json({ id, status: 'rejected' })
-  } catch (err: unknown) {
-    await log('gateway:http', `reject error: ${String(err)}`)
-    res.status(500).json({ error: String(err) })
-  }
-})
+    const body = req.body as { reason?: unknown }
+    const reason = typeof body.reason === 'string' ? body.reason : undefined
+    try {
+      const db = getDb()
+      const result = await db`
+        UPDATE ouro_feedback SET status = 'rejected'
+        WHERE id = ${id} AND status NOT IN ('approved', 'rejected')
+        RETURNING id
+      `
+      if (result.length === 0) {
+        const existing = await db`SELECT status FROM ouro_feedback WHERE id = ${id}`
+        if (existing.length > 0) {
+          res.status(409).json({ error: `feedback ${id} is already ${String(existing[0]?.['status'])}` })
+        } else {
+          res.status(404).json({ error: `no feedback found with id ${id}` })
+        }
+        return
+      }
+      await publish('ouro_notify', { type: 'evolution_rejected', id, reason })
+      await log('gateway:http', `evolution ${id} rejected via HTTP${reason ? `: ${reason}` : ''}`)
+      res.json({ id, status: 'rejected' })
+    } catch (err: unknown) {
+      await log('gateway:http', `reject error: ${String(err)}`)
+      res.status(500).json({ error: String(err) })
+    }
+  })
+
+  return router
+}
 
 export async function startHttpServer(): Promise<void> {
+  const app = express()
+  app.use(express.json())
+
   const oidcIssuer = process.env['OURO_OIDC_ISSUER']
   if (oidcIssuer) {
     try {
@@ -69,7 +110,7 @@ export async function startHttpServer(): Promise<void> {
     }
   }
 
-  app.use(router)
+  app.use(createRouter())
 
   const server = createServer(app)
   server.listen(PORT_GATEWAY, () => {

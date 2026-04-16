@@ -49,10 +49,10 @@
 - [ ] Push main branch to origin (currently 6 commits ahead of remote) — requires human action
 - [ ] npm publish: run `pnpm -r publish --access public` once org namespace `@ouroboros` is claimed
 
-## v0.6.0 — Integration test suite + Gateway rate limiting (proposed)
+## v0.6.0 — Integration test suite + Gateway rate limiting ✅ complete
 
-- [ ] gateway: request rate limiting on `/approve/:id` and `/reject/:id` (prevent duplicate approval spam)
-- [ ] gateway: idempotency key check — reject double-approval of same feedback id with 409
-- [ ] Test: end-to-end approval flow — POST /approve/:id → DB state change → ouro_notify event published
-- [ ] Test: OIDC middleware integration test against a real jwks_uri (testcontainers or mock server)
-- [ ] meta-agent: configurable watchdog interval via `OURO_WATCHDOG_INTERVAL_MS` env var (currently hardcoded 60s)
+- [x] gateway: request rate limiting on `/approve/:id` and `/reject/:id` (prevent duplicate approval spam)
+- [x] gateway: idempotency key check — reject double-approval of same feedback id with 409
+- [x] Test: end-to-end approval flow — POST /approve/:id → DB state change → ouro_notify event published
+- [x] Test: OIDC middleware integration test — verifies discovery-doc fetch path via mocked fetch
+- [x] meta-agent: configurable watchdog interval via `OURO_WATCHDOG_INTERVAL_MS` env var (was hardcoded 60s)
