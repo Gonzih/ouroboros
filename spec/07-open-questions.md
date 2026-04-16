@@ -1,95 +1,88 @@
-# Open Questions — Needs Decisions Before Implementation
+# Open Questions — Decision Log
 
-Track all unresolved design decisions here. Each question should be answered before the relevant package is implemented.
+All 12 original questions are now resolved. Recording decisions and rationale here.
 
 ---
 
 ## Meta-Agent
 
-### OQ-01: Self-evolution safety
-Should feedback auto-merge or require a review step?
-- Option A: Always auto-merge (fastest, most autonomous, risky)
-- Option B: Open PR, notify user, wait for approval (safe, breaks autonomy)
-- Option C: Auto-merge if `pnpm build` passes, else notify and wait
+### OQ-01: Self-evolution safety ✅ DECIDED
+**Decision:** Auto-merge with user-as-QA approval gate.
 
-**Current lean:** Option C — build gate gives a safety net without breaking the loop.
+Flow:
+1. Meta-agent implements feedback, opens PR
+2. Gateway sends `evolution_proposed` notification to all channels: "Here's what changed [diff]. Approve with /approve {id}"
+3. User is QA — they verify the system still works and approve
+4. On `/approve`: meta-agent merges. On `/reject`: PR closed.
 
-### OQ-02: Evolution rate limiting
-Unchecked feedback could trigger infinite self-modification loops.
-- Max 1 evolution per 5 minutes?
-- Max depth (evolution triggered by evolution)?
-- Dead-letter queue for failed evolutions?
+PR is never auto-merged without user approval. The user sees the diff and tests before confirming.
 
-### OQ-03: Worker isolation
-Subprocess vs cc-agent for worker dispatch?
-- Subprocess: simpler, shares memory space, no isolation
-- cc-agent: full isolation, own git clone, proper job lifecycle tracking
-- **Current lean:** cc-agent for git backend (already exists), subprocess for local backend
+### OQ-02: Evolution rate limiting ✅ DECIDED
+**Decision:** Approval-based, not time-based.
+
+Since user must approve every evolution before merge, there's an implicit rate limit — the user can only approve one at a time. No separate time throttle needed. Multiple pending evolutions can be queued; user works through them in order.
+
+Dead-letter: if an evolution PR stays unreviewed for 7 days, auto-close and log.
 
 ---
 
 ## Worker
 
-### OQ-04: Local backend git behavior
-If a local folder has no `.git`, should worker:
-- A: `git init` it automatically
-- B: Operate without git (changes made but not versioned)
-- C: Refuse with an error
+### OQ-03: Worker isolation ✅ DECIDED
+**Decision:** Subprocess (not cc-agent).
 
-### OQ-05: Worker timeout
-Claude tasks can run 10-30 minutes. What's the max?
-- **Suggested:** 30 minutes, configurable via `OURO_WORKER_TIMEOUT_MS`
+Simpler, sufficient for v1. cc-agent adds overhead and a dependency on the cc-agent service being up. Workers are short-lived and isolated by the storage backend's `prepare/cleanup` cycle anyway.
+
+### OQ-04: Local backend git behavior ✅ DECIDED
+**Decision:** Auto git-init.
+
+If target folder has no `.git`: run `git init && git add -A && git commit -m "ouro: initial commit before task"` automatically. User gets a git history of all changes Ouroboros made to their folder.
+
+### OQ-05: Worker timeout ✅ DECIDED
+**Decision:** No hard timeout.
+
+Task runs until claude exits. Progress streamed live to UI + gateway. If no output for > 10 minutes, log a heartbeat warning ("worker {id}: still running, last output 10m ago") but do not kill. User sees what's happening at all times.
 
 ---
 
 ## UI
 
-### OQ-06: Authentication
-- Option A: No auth (local tool, trust the network)
-- Option B: Single hardcoded API key in env (`OURO_API_KEY`)
-- Option C: Full auth system (out of scope for v1)
+### OQ-06: Authentication ✅ DECIDED
+**Decision:** No auth for v1. Future: OpenID Connect SSO via single env var `OURO_OIDC_ISSUER`.
 
-**Current lean:** Option B — simple env key, UI checks header.
+### OQ-07: Live updates mechanism ✅ DECIDED
+**Decision:** WebSocket (matching cc-agent-ui pattern).
 
-### OQ-07: Live updates mechanism
-- SSE: simple, uni-directional, works with Next.js
-- WebSocket: bi-directional, more complex
-- Polling: resilient, easy to implement
-- **Current lean:** SSE for logs/jobs, polling fallback if SSE unavailable
+SSE was considered but WebSocket enables bi-directional commands (subscribe/unsubscribe to specific job streams). Already a dependency in cc-agent-ui.
+
+### OQ-08: UI framework ✅ DECIDED
+**Decision:** Vanilla JS, single index.html, Node.js HTTP server — same stack as cc-agent-ui.
+
+No React, no Vue, no Next.js. The meta-agent needs to be able to modify the UI with a text editor. Single file = trivially modifiable. JetBrains Mono, dark terminal aesthetic.
 
 ---
 
 ## MCP Factory
 
-### OQ-08: MCP validation before registration
-Should mcp-factory test that the MCP server actually starts before writing to claude.json?
-- Pro: catches bad configs early
-- Con: MCP startup can be slow (npx download)
+### OQ-09 (was OQ-08): MCP validation ✅ DECIDED
+**Decision:** Heavy validation — spawn Claude with temp MCP config, force it to test every tool endpoint, classify as OPERATIONAL / PARTIAL / FAILED. Only register if OPERATIONAL or PARTIAL. FAILED returns error to caller.
 
-### OQ-09: claude.json write conflicts
-If two packages both write to claude.json simultaneously:
-- Use file lock?
-- Write through Redis only, one writer patches the file?
+### OQ-10 (was OQ-09): claude.json write conflicts ✅ DECIDED
+**Decision:** Redis lock (`ouro:claude-json:lock`, TTL 10s) before read-merge-write. Single writer at a time.
 
 ---
 
 ## Storage
 
-### OQ-10: S3 and Google Drive priority
-These are stubs in v1. When should they be implemented?
-- **Defer until:** a user specifically asks for them via feedback (let the Ouroboros loop build them)
+### OQ-11 (was OQ-10): S3 / Google Drive / OneDrive priority ✅ DECIDED
+**Decision:** Stub in v1. All three business storage types (S3, GDrive, OneDrive) are wired in the StorageBackend interface but return "not yet implemented" in v1. Implement via the Ouroboros feedback loop when a user needs them — dog-food the system.
 
 ---
 
 ## General
 
-### OQ-11: Multi-machine deployment
-v1 assumes single machine (Redis local, claude binary local, ~/.claude.json local).
-Should v1 have any concessions for multi-machine?
-- **Current lean:** No. Single machine for v1. Multi-machine is a future spec.
+### OQ-12 (was OQ-11): Multi-machine ✅ DECIDED
+**Decision:** Single machine for v1. One Redis, one claude binary, one ~/.claude.json. Multi-machine is a future spec.
 
-### OQ-12: Versioning and release
-Each package is `@ouroboros/core`, `@ouroboros/meta-agent`, etc.
-- Publish to npm (public)?
-- Keep private?
-- **Current lean:** Public npm under `@ouroboros/*` namespace, publish after v1 is stable.
+### OQ-13 (was OQ-12): npm publishing ✅ DECIDED
+**Decision:** Public npm under `@ouroboros/*` namespace. Publish after v1 is stable and tested. Goal: teach users how to run self-evolving infrastructure. That's the age we're in.

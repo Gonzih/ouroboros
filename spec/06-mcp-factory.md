@@ -1,75 +1,88 @@
 # Spec: packages/mcp-factory
 
 ## Purpose
-Registers new data sources as MCP servers at runtime. Parses a connection string, generates the MCP server config, writes it to Redis and patches ~/.claude.json. Makes private data sources into tool-accessible context for any claude subprocess.
+Registers data sources as MCP servers at runtime. Parses a connection string, generates MCP config, **validates that the MCP actually works** by testing it with a live Claude instance, then writes to Redis and patches ~/.claude.json.
 
-## Connection String Schemes
+## Connection String Schemes (v1)
 
-| Scheme | Example | MCP Generated |
-|--------|---------|---------------|
-| `redis://` | `redis://localhost:6379/0` | redis MCP (read keys as tools) |
-| `pg://` or `postgres://` | `pg://user:pass@host/db` | postgres MCP (query as tool) |
-| `file:///path` | `file:///Users/me/docs` | filesystem MCP (read files as tools) |
-| `github://owner/repo` | `github://Gonzih/ouroboros` | GitHub repo MCP |
-| `gdrive://folder-id` | `gdrive://1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs` | Google Drive MCP (stub v1) |
-| `s3://bucket/prefix` | `s3://my-bucket/data/` | S3 MCP (stub v1) |
+| Scheme | Example | MCP Package |
+|--------|---------|-------------|
+| `file:///path` | `file:///Users/me/docs` | `@modelcontextprotocol/server-filesystem` |
+| `github://owner/repo` | `github://Gonzih/ouroboros` | `@modelcontextprotocol/server-github` |
+| `pg://` / `postgres://` | `pg://user:pass@host/db` | `@modelcontextprotocol/server-postgres` |
+| `gdrive://folder-id` | `gdrive://1BxiMVs0XRA` | rclone-based (stub v1) |
+| `s3://bucket/prefix` | `s3://my-data/docs/` | AWS MCP (stub v1) |
+| `onedrive://path` | `onedrive://Documents/data` | rclone-based (stub v1) |
 
 ## HTTP API
 
 ```
 POST /mcp/register
   body: { name: string, connectionString: string }
-  response: { success: true, config: McpConfig } | { error: string }
+  → parse → generate config → validate → register
+  response: { success: true, config: McpConfig, validation: ValidationResult }
+           | { error: string, validationLog?: string }
 
-GET /mcp/list
-  response: McpConfig[]
+GET  /mcp/list
+  response: McpConfig[]  (includes operational: boolean from last validation)
+
+POST /mcp/test/:name
+  → re-run validation on existing MCP
+  response: ValidationResult
 
 DELETE /mcp/:name
+  → remove from ouro:mcp:registry, patch claude.json to remove entry
   response: { success: true }
 ```
 
-## Registration Flow
+## MCP Validation — Core Feature
 
-1. Parse connection string → determine scheme
-2. Generate `mcpServers` entry for `~/.claude.json`
-3. Write to `ouro:mcp:registry` hash (key=name, value=JSON McpConfig)
-4. Publish to `ouro:notify`: `{ type: 'mcp_registered', name }`
-5. Meta-agent picks up notification → patches `~/.claude.json` project scope
+Before writing anything to Redis or claude.json, mcp-factory **proves the MCP works**:
 
-## ~/.claude.json Patch
+### Validation Flow
 
-```json
-{
-  "projects": {
-    "/path/to/ouroboros": {
-      "mcpServers": {
-        "{name}": { ...generated config }
-      }
-    }
-  }
-}
+```
+1. Generate mcpServers config entry for the connection string
+2. Write a temporary claude.json to /tmp/ouro-mcp-test-{name}.json
+3. Spawn: claude --print --dangerously-skip-permissions \
+     --mcp-config /tmp/ouro-mcp-test-{name}.json \
+     -p "List all available MCP tools. For each tool, call it with a simple test invocation. Report: OPERATIONAL if all tools respond, PARTIAL if some fail, FAILED if none respond."
+4. Parse output for OPERATIONAL / PARTIAL / FAILED marker
+5. Record validation result: { status, toolsFound: string[], failedTools: string[], log: string }
+6. If FAILED: return error to caller, do not register
+7. If OPERATIONAL or PARTIAL: register and note partial status
+8. Clean up temp config file
 ```
 
-## Generated Configs by Scheme
+### What "operational" means per scheme
 
-```typescript
-// file:///path → filesystem MCP
-{ command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", path] }
+| Scheme | Test invocation |
+|--------|----------------|
+| `file:///path` | `list_directory(path)` — verify directory listing works |
+| `github://` | `list_repos` or `get_file_contents` on README.md |
+| `pg://` | `query("SELECT 1")` — verify connection |
+| others | `list_tools()` — verify MCP starts and exposes at least one tool |
 
-// github://owner/repo → github MCP
-{ command: "npx", args: ["-y", "@modelcontextprotocol/server-github"],
-  env: { GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN } }
+### Validation timeout
+30 seconds max. If claude subprocess doesn't produce a result marker in 30s: treat as FAILED.
 
-// pg://... → postgres MCP
-{ command: "npx", args: ["-y", "@modelcontextprotocol/server-postgres", connectionString] }
+## Registration Flow (post-validation)
 
-// redis://... → (custom, TBD — no official redis MCP yet)
-// stub: log "redis MCP not yet available, storing config only"
+```
+1. Write to ouro:mcp:registry hash: key=name, value=JSON McpConfig
+2. Patch ~/.claude.json:
+   projects[repoRoot].mcpServers[name] = generatedConfig
+   (atomic: read → merge → write, no concurrent writes — use file lock via ouro:claude-json:lock)
+3. Publish to ouro:notify: { type: 'mcp_registered', name, operational: true/false }
+4. Meta-agent receives notification → logs it, optionally restarts relevant subprocess
 ```
 
-## Open Questions
-- [ ] How does meta-agent detect new registry entries — polling or pub/sub?
-- [ ] Should mcp-factory also handle deregistration (remove from claude.json)?
-- [ ] What happens when two packages register the same MCP name — error or overwrite?
-- [ ] Should generated configs be validated (test MCP starts) before writing?
-- [ ] gdrive and s3 MCPs don't have official packages yet — prioritize file/github/postgres for v1
+## Conflict Handling
+- If `name` already exists in registry: overwrite (treat as update)
+- Log the replacement with old config for auditability
+
+## Open Questions (resolved)
+- ✅ Validate before register: yes — heavy testing via live Claude instance
+- ✅ Conflict on same name: overwrite, log old config
+- ✅ gdrive/s3/OneDrive: stubbed in v1, MCP config stored but marked unvalidated
+- ⬜ Deregistration: removes from redis + claude.json — implement in v1

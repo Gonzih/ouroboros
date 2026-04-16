@@ -24,11 +24,21 @@ This is a monorepo. Every package is runnable. Implementation follows spec files
 packages/
   core/          — shared types, Redis, logging, event bus
   meta-agent/    — coordinator: self-evolution + worker dispatch + MCP registry
-  worker/        — executes tasks against storage backends
-  ui/            — Next.js web UI (port 7702)
-  gateway/       — Telegram bridge + notification dispatch
-  mcp-factory/   — dynamic MCP provisioning from connection strings
+  worker/        — executes tasks against storage backends (git/local/s3/gdrive/onedrive)
+  ui/            — vanilla JS single-file UI, Node.js + WebSocket (port 7702)
+  gateway/       — multi-channel bridge: Telegram, Slack, webhook (any channel)
+  mcp-factory/   — dynamic MCP provisioning with live validation (port 7703)
 ```
+
+## Key Decisions (do not re-litigate without updating spec/07)
+
+- **UI stack**: vanilla JS + single index.html + Node.js HTTP + WebSocket. No React, no Vue, no Next.js.
+- **Gateway**: channel abstraction — ChannelAdapter interface, Telegram is one adapter.
+- **Evolution**: auto-open PR, send diff to user, user approves via /approve before merge. User = QA.
+- **Worker timeout**: none. Stream output live. Warn after 10min idle.
+- **MCP validation**: spawn Claude with temp config, test all tool endpoints, OPERATIONAL/PARTIAL/FAILED.
+- **Local backend**: auto git-init if no .git found.
+- **Auth**: none for v1. Future: OIDC SSO via OURO_OIDC_ISSUER env var.
 
 ## Redis Key Schema
 
