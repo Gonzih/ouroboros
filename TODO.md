@@ -39,7 +39,20 @@
 - [x] Update `.env.example` with `OURO_OIDC_ISSUER` example value and doc comment
 - [x] Remove stub OIDC log from gateway index; real activation log in startHttpServer
 
+## v0.5.1 — housekeeping ✅ complete
+
+- [x] CHANGELOG.md: add missing v0.5.0 entry
+- [x] Bump all package.json versions to 0.5.0 (were stuck at 0.2.0 since v0.3.0)
+
 ## Pending
 
-- [ ] Push main branch to origin (currently ahead of remote)
+- [ ] Push main branch to origin (currently 6 commits ahead of remote) — requires human action
 - [ ] npm publish: run `pnpm -r publish --access public` once org namespace `@ouroboros` is claimed
+
+## v0.6.0 — Integration test suite + Gateway rate limiting (proposed)
+
+- [ ] gateway: request rate limiting on `/approve/:id` and `/reject/:id` (prevent duplicate approval spam)
+- [ ] gateway: idempotency key check — reject double-approval of same feedback id with 409
+- [ ] Test: end-to-end approval flow — POST /approve/:id → DB state change → ouro_notify event published
+- [ ] Test: OIDC middleware integration test against a real jwks_uri (testcontainers or mock server)
+- [ ] meta-agent: configurable watchdog interval via `OURO_WATCHDOG_INTERVAL_MS` env var (currently hardcoded 60s)

@@ -1,6 +1,6 @@
 {
   "name": "@ouroboros/meta-agent",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "description": "Coordinator: MCP watch, worker dispatch, self-evolution",
   "type": "module",
   "main": "./dist/index.js",
