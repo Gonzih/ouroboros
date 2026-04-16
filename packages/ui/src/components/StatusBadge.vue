@@ -13,6 +13,7 @@ const colorMap: Record<string, string> = {
   approved: 'var(--green)',
   rejected: 'var(--red)',
   applied: 'var(--blue)',
+  merge_failed: 'var(--red)',
 }
 
 function color(status: string): string {

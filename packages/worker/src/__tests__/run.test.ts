@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { EventEmitter as EventEmitterType } from 'node:events'
 
 const {
   mockProc, mockStdoutRl, mockStderrRl,
@@ -7,8 +8,8 @@ const {
 } = vi.hoisted(() => {
   const { EventEmitter } = require('node:events') as typeof import('node:events')
 
-  const proc = new EventEmitter() as EventEmitter & {
-    stdout: EventEmitter; stderr: EventEmitter; kill: () => void; pid: number
+  const proc = new EventEmitter() as EventEmitterType & {
+    stdout: EventEmitterType; stderr: EventEmitterType; kill: () => void; pid: number
   }
   proc.stdout = new EventEmitter()
   proc.stderr = new EventEmitter()
@@ -17,7 +18,7 @@ const {
 
   let rlCount = 0
   const pub = { fn: (_ch: string, _p: unknown) => Promise.resolve() }
-  const db = { fn: () => Promise.resolve([]) }
+  const db = { fn: (..._args: unknown[]) => Promise.resolve([]) }
 
   return {
     mockProc: proc,

@@ -43,6 +43,10 @@ function runClaude(prompt: string, cwd: string): string {
     },
   )
   if (result.error) throw result.error
+  if (result.status !== 0) {
+    const stderr = (result.stderr ?? '').trim()
+    throw new Error(`claude exited with code ${result.status}${stderr ? `: ${stderr}` : ''}`)
+  }
   return result.stdout ?? ''
 }
 
@@ -77,6 +81,14 @@ async function pollForApproval(
         runClaude(mergePrompt, repoRoot)
       } catch (err) {
         await log('meta-agent:evolution', `merge failed for PR ${prUrl}: ${String(err)}`)
+        await db`
+          UPDATE ouro_feedback
+          SET status = 'merge_failed'
+          WHERE id = ${feedbackId}
+        `
+        await ack('ouro_feedback', msgId)
+        await publish('ouro_notify', { type: 'evolution_merge_failed', feedbackId, prUrl, error: String(err) })
+        return
       }
 
       await db`

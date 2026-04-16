@@ -28,7 +28,7 @@ const JOB_EVENT_TYPES = new Set([
 ])
 const MCP_EVENT_TYPES = new Set(['mcp_registered', 'mcp_removed', 'mcp_revalidated'])
 const FEEDBACK_EVENT_TYPES = new Set([
-  'evolution_approved', 'evolution_rejected', 'evolution_applied',
+  'evolution_proposed', 'evolution_approved', 'evolution_rejected', 'evolution_applied', 'evolution_merge_failed',
 ])
 
 export function useWebSocket(): void {

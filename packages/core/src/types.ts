@@ -3,7 +3,7 @@
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 export type StorageBackend = 'git' | 'local' | 's3' | 'gdrive' | 'onedrive'
 export type McpStatus = 'pending' | 'operational' | 'partial' | 'failed'
-export type FeedbackStatus = 'pending' | 'pr_open' | 'approved' | 'rejected' | 'applied'
+export type FeedbackStatus = 'pending' | 'pr_open' | 'approved' | 'rejected' | 'applied' | 'merge_failed'
 
 export interface Job {
   id: string
