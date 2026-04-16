@@ -81,5 +81,15 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
-  return { jobs, loading, error, outputMap, fetchJobs, fetchOutput, submitTask, updateJob, appendOutput }
+  async function cancelJob(id: string): Promise<void> {
+    const res = await fetch(`/api/jobs/${id}/cancel`, { method: 'POST' })
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string }
+      throw new Error(data.error ?? 'Failed to cancel job')
+    }
+    // Optimistically update local state
+    updateJob({ id, status: 'cancellation_requested' })
+  }
+
+  return { jobs, loading, error, outputMap, fetchJobs, fetchOutput, submitTask, updateJob, appendOutput, cancelJob }
 })

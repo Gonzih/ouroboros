@@ -52,5 +52,14 @@ export const useMcpStore = defineStore('mcp', () => {
     await fetchMcp()
   }
 
-  return { mcps, loading, error, fetchMcp, registerMcp, deleteMcp }
+  async function revalidateMcp(name: string): Promise<void> {
+    const res = await fetch(`/api/mcp/${encodeURIComponent(name)}/revalidate`, { method: 'POST' })
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string }
+      throw new Error(data.error ?? 'Failed to revalidate MCP')
+    }
+    await fetchMcp()
+  }
+
+  return { mcps, loading, error, fetchMcp, registerMcp, deleteMcp, revalidateMcp }
 })

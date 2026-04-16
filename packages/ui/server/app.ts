@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import express, { type Express, Router } from 'express'
 import { WebSocketServer } from 'ws'
-import { getDb, enqueue, log } from '@ouroboros/core'
+import { getDb, enqueue, log, publish } from '@ouroboros/core'
 import { createOidcMiddleware } from '@ouroboros/gateway/oidc'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -176,12 +176,50 @@ apiRouter.post('/task', async (req, res) => {
   }
 })
 
+apiRouter.post('/jobs/:id/cancel', async (req, res) => {
+  const id = req.params['id'] ?? ''
+  if (!id) { res.status(400).json({ error: 'id required' }); return }
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE ouro_jobs
+      SET status = 'cancellation_requested'
+      WHERE id = ${id} AND status IN ('pending', 'running')
+    `
+    if (result.count === 0) {
+      const rows = await db<{ status: string }[]>`SELECT status FROM ouro_jobs WHERE id = ${id}`
+      if (rows.length === 0) { res.status(404).json({ error: 'job not found' }); return }
+      res.status(409).json({ error: 'job already in terminal state', status: rows[0]?.status })
+      return
+    }
+    await publish('ouro_notify', { type: 'job_cancel_requested', jobId: id })
+    await log('ui', `cancel requested for job ${id}`)
+    res.json({ ok: true })
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
 apiRouter.post('/mcp/register', async (req, res) => {
   try {
     const response = await fetch(`${MCP_FACTORY_URL}/mcp/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
+    })
+    const data: unknown = await response.json()
+    res.status(response.status).json(data)
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+apiRouter.post('/mcp/:name/revalidate', async (req, res) => {
+  const name = req.params['name'] ?? ''
+  if (!name) { res.status(400).json({ error: 'name required' }); return }
+  try {
+    const response = await fetch(`${MCP_FACTORY_URL}/mcp/test/${encodeURIComponent(name)}`, {
+      method: 'POST'
     })
     const data: unknown = await response.json()
     res.status(response.status).json(data)

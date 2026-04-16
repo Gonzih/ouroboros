@@ -10,6 +10,7 @@ const modalName = ref('')
 const modalConnStr = ref('')
 const modalError = ref<string | null>(null)
 const modalSubmitting = ref(false)
+const revalidatingName = ref<string | null>(null)
 
 onMounted(() => { void mcpStore.fetchMcp() })
 
@@ -36,6 +37,17 @@ async function submitRegister(): Promise<void> {
     modalError.value = String(err)
   } finally {
     modalSubmitting.value = false
+  }
+}
+
+async function revalidateEntry(name: string): Promise<void> {
+  revalidatingName.value = name
+  try {
+    await mcpStore.revalidateMcp(name)
+  } catch (err: unknown) {
+    alert(String(err))
+  } finally {
+    revalidatingName.value = null
   }
 }
 
@@ -82,7 +94,14 @@ async function deleteEntry(name: string): Promise<void> {
             {{ mcp.tools_found ? mcp.tools_found.length + ' tools' : '—' }}
           </td>
           <td class="dim-cell">{{ new Date(mcp.registered_at).toLocaleString() }}</td>
-          <td>
+          <td class="action-cell">
+            <button
+              class="revalidate-btn"
+              :disabled="revalidatingName === mcp.name"
+              @click="revalidateEntry(mcp.name)"
+            >
+              {{ revalidatingName === mcp.name ? '…' : 'revalidate' }}
+            </button>
             <button class="danger-btn" @click="deleteEntry(mcp.name)">delete</button>
           </td>
         </tr>
@@ -151,6 +170,16 @@ async function deleteEntry(name: string): Promise<void> {
 .dim-text {
   color: var(--dim);
   font-size: 12px;
+}
+
+.action-cell {
+  display: flex;
+  gap: 6px;
+}
+
+.revalidate-btn {
+  font-size: 11px;
+  padding: 2px 8px;
 }
 
 .danger-btn {

@@ -7,6 +7,7 @@ vi.mock('@ouroboros/core', () => ({
   getDb: () => mockDb,
   enqueue: vi.fn().mockResolvedValue(1n),
   log: vi.fn().mockResolvedValue(undefined),
+  publish: vi.fn().mockResolvedValue(undefined),
   subscribe: vi.fn().mockResolvedValue(() => undefined),
 }))
 
@@ -39,9 +40,10 @@ vi.mock('node:http', async (importOriginal) => {
 })
 
 import { app, mountRoutes } from '../app.js'
-import { enqueue } from '@ouroboros/core'
+import { enqueue, publish } from '@ouroboros/core'
 
 const mockEnqueue = vi.mocked(enqueue)
+const mockPublish = vi.mocked(publish)
 
 // Mount routes once before all tests (OIDC is skipped — OURO_OIDC_ISSUER not set)
 beforeAll(async () => {
@@ -147,6 +149,31 @@ describe('UI REST API routes', () => {
         .post('/api/task')
         .send({ instructions: 'Fix bug' })
       expect(res.status).toBe(400)
+    })
+  })
+
+  describe('POST /api/jobs/:id/cancel', () => {
+    it('cancels a running job and publishes notify', async () => {
+      mockDb.mockResolvedValueOnce({ count: 1 })
+      const res = await request(app).post('/api/jobs/j1/cancel')
+      expect(res.status).toBe(200)
+      expect(res.body.ok).toBe(true)
+      expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({ type: 'job_cancel_requested', jobId: 'j1' }))
+    })
+
+    it('returns 409 when job is already in terminal state', async () => {
+      mockDb.mockResolvedValueOnce({ count: 0 })
+      mockDb.mockResolvedValueOnce([{ status: 'completed' }])
+      const res = await request(app).post('/api/jobs/j1/cancel')
+      expect(res.status).toBe(409)
+      expect(res.body.status).toBe('completed')
+    })
+
+    it('returns 404 when job does not exist', async () => {
+      mockDb.mockResolvedValueOnce({ count: 0 })
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).post('/api/jobs/no-such-job/cancel')
+      expect(res.status).toBe(404)
     })
   })
 })

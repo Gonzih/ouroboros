@@ -1,3 +1,14 @@
+## v0.7.0 — Job cancellation + MCP revalidation + smart WebSocket dispatch
+
+- ui: `POST /api/jobs/:id/cancel` — sets job status to `cancellation_requested` and publishes `job_cancel_requested` event. Returns 409 if job is already in a terminal state, 404 if not found.
+- meta-agent worker-dispatch: `checkCancellations()` loop runs every 3 s alongside the task-poll loop. Reads DB for active workers with `cancellation_requested` status, sends SIGTERM, updates status to `cancelled`, and publishes `job_complete` event.
+- ui: Jobs.vue — cancel button appears for `running` and `pending` jobs. Click stops propagation (doesn't expand the row), disables during in-flight request, optimistically updates job status in the store.
+- ui: `POST /api/mcp/:name/revalidate` — proxies to mcp-factory `POST /mcp/test/:name`. Returns mcp-factory's validation result directly.
+- mcp-factory: `POST /mcp/test/:name` now publishes `ouro_notify { type: 'mcp_revalidated', name, status }` after updating the DB. Previously only logged.
+- ui: McpRegistry.vue — revalidate button per row, alongside the existing delete button. Disables while request is in-flight, re-fetches MCP list on success.
+- useWebSocket: smart event routing — `mcp_registered`/`mcp_removed`/`mcp_revalidated` events refresh `mcpStore`; `evolution_approved`/`evolution_rejected`/`evolution_applied` refresh `feedbackStore`; all job/system events refresh `jobsStore`. Previously every Postgres NOTIFY would call `fetchJobs()` unconditionally.
+- Tests: 3 new cancel-endpoint tests (200 cancel, 409 terminal-state guard, 404 not-found). Total: 157 tests across all packages.
+
 ## v0.6.0 — Gateway rate limiting + idempotency + configurable watchdog
 
 - gateway: `POST /approve/:id` and `POST /reject/:id` now enforce a 10-second per-ID rate limit — returns 429 on duplicate submission within the window.

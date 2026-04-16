@@ -1,15 +1,34 @@
 import { onMounted, onUnmounted } from 'vue'
 import { useJobsStore } from '../stores/jobs'
 import { useLogsStore } from '../stores/logs'
+import { useMcpStore } from '../stores/mcp'
+import { useFeedbackStore } from '../stores/feedback'
+
+interface NotifyPayload {
+  type: string
+  jobId?: string
+  status?: string
+  name?: string
+  feedbackId?: string
+}
 
 interface WsMessage {
   type: 'notify' | 'job_update' | 'job_output' | 'log'
-  payload?: unknown
+  payload?: NotifyPayload
   job?: Record<string, unknown>
   jobId?: string
   line?: string
   entry?: { id: number; source: string; message: string; ts: string }
 }
+
+const JOB_EVENT_TYPES = new Set([
+  'job_complete', 'job_requeued', 'job_cancel_requested',
+  'rebuilding', 'rebuild_failed', 'restarting',
+])
+const MCP_EVENT_TYPES = new Set(['mcp_registered', 'mcp_removed', 'mcp_revalidated'])
+const FEEDBACK_EVENT_TYPES = new Set([
+  'evolution_approved', 'evolution_rejected', 'evolution_applied',
+])
 
 export function useWebSocket(): void {
   let ws: WebSocket | null = null
@@ -34,10 +53,21 @@ export function useWebSocket(): void {
 
       const jobsStore = useJobsStore()
       const logsStore = useLogsStore()
+      const mcpStore = useMcpStore()
+      const feedbackStore = useFeedbackStore()
 
       if (msg.type === 'notify' && msg.payload) {
-        // A Postgres LISTEN/NOTIFY event — trigger a jobs refresh
-        void jobsStore.fetchJobs()
+        const eventType = msg.payload.type
+        if (MCP_EVENT_TYPES.has(eventType)) {
+          void mcpStore.fetchMcp()
+        } else if (FEEDBACK_EVENT_TYPES.has(eventType)) {
+          void feedbackStore.fetchFeedback()
+        } else if (JOB_EVENT_TYPES.has(eventType)) {
+          void jobsStore.fetchJobs()
+        } else {
+          // Unknown event — refresh jobs as safe default
+          void jobsStore.fetchJobs()
+        }
       } else if (msg.type === 'job_update' && msg.job) {
         jobsStore.updateJob(msg.job)
       } else if (msg.type === 'job_output' && msg.jobId && msg.line) {

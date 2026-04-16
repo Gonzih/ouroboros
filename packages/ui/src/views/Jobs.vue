@@ -6,11 +6,24 @@ import LiveOutput from '../components/LiveOutput.vue'
 
 const jobsStore = useJobsStore()
 const expandedId = ref<string | null>(null)
+const cancellingId = ref<string | null>(null)
 
 onMounted(() => { void jobsStore.fetchJobs() })
 
 function toggle(id: string): void {
   expandedId.value = expandedId.value === id ? null : id
+}
+
+async function cancelJob(id: string, event: Event): Promise<void> {
+  event.stopPropagation()
+  cancellingId.value = id
+  try {
+    await jobsStore.cancelJob(id)
+  } catch (err: unknown) {
+    alert(String(err))
+  } finally {
+    cancellingId.value = null
+  }
 }
 
 function elapsed(job: { started_at: string | null; completed_at: string | null; status: string }): string {
@@ -43,6 +56,7 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
           <th>status</th>
           <th>created</th>
           <th>elapsed</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -54,9 +68,19 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
             <td><StatusBadge :status="job.status" /></td>
             <td class="dim-cell">{{ new Date(job.created_at).toLocaleString() }}</td>
             <td class="dim-cell">{{ elapsed(job) }}</td>
+            <td>
+              <button
+                v-if="job.status === 'running' || job.status === 'pending'"
+                class="cancel-btn"
+                :disabled="cancellingId === job.id"
+                @click="cancelJob(job.id, $event)"
+              >
+                {{ cancellingId === job.id ? '…' : 'cancel' }}
+              </button>
+            </td>
           </tr>
           <tr v-if="expandedId === job.id" class="output-row">
-            <td colspan="6">
+            <td colspan="7">
               <LiveOutput :job-id="job.id" :is-running="job.status === 'running'" />
               <div v-if="job.error" class="error-text" style="margin-top:6px">error: {{ job.error }}</div>
             </td>
@@ -101,6 +125,17 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
 .output-row td {
   padding: 8px 10px;
   background: var(--surface);
+}
+
+.cancel-btn {
+  border-color: var(--red);
+  color: var(--red);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.cancel-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 15%, transparent);
 }
 
 .dim-text {

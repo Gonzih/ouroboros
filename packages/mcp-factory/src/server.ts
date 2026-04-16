@@ -163,6 +163,7 @@ export function createServer(): express.Application {
           WHERE name = ${name}
         `
 
+        await publish('ouro_notify', { type: 'mcp_revalidated', name, status: validation.status })
         void log('mcp-factory', `MCP "${name}" re-validated (${validation.status})`)
         res.json(validation)
       } catch (err) {

@@ -95,6 +95,29 @@ async function spawnWorker(
   })
 }
 
+async function checkCancellations(): Promise<void> {
+  if (activeWorkers.size === 0) return
+  try {
+    const db = getDb()
+    const ids = Array.from(activeWorkers.keys())
+    const rows = await db<{ id: string }[]>`
+      SELECT id FROM ouro_jobs
+      WHERE id = ANY(${ids}) AND status = 'cancellation_requested'
+    `
+    for (const row of rows) {
+      const proc = activeWorkers.get(row.id)
+      if (proc) {
+        proc.kill('SIGTERM')
+        await db`UPDATE ouro_jobs SET status = 'cancelled', completed_at = NOW() WHERE id = ${row.id}`
+        await publish('ouro_notify', { type: 'job_complete', jobId: row.id, status: 'cancelled' })
+        await log('meta-agent:worker-dispatch', `cancelled job ${row.id}`)
+      }
+    }
+  } catch (err) {
+    await log('meta-agent:worker-dispatch', `cancellation check error: ${String(err)}`)
+  }
+}
+
 export async function startWorkerDispatch(): Promise<void> {
   const maxWorkers = parseInt(process.env['OURO_MAX_WORKERS'] ?? '3', 10)
   const workerBin = resolveWorkerBin()
@@ -131,7 +154,15 @@ export async function startWorkerDispatch(): Promise<void> {
     })
   }
 
+  // Cancellation check — runs every 3 seconds alongside the poll loop
+  const runCancelCheck = (): void => {
+    void checkCancellations().finally(() => {
+      setTimeout(runCancelCheck, 3000)
+    })
+  }
+
   run()
+  runCancelCheck()
   // Return a promise that never resolves — keeps the loop alive
   await new Promise<never>(() => undefined)
 }

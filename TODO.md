@@ -44,11 +44,6 @@
 - [x] CHANGELOG.md: add missing v0.5.0 entry
 - [x] Bump all package.json versions to 0.5.0 (were stuck at 0.2.0 since v0.3.0)
 
-## Pending
-
-- [ ] Push main branch to origin (currently 6 commits ahead of remote) — requires human action
-- [ ] npm publish: run `pnpm -r publish --access public` once org namespace `@ouroboros` is claimed
-
 ## v0.6.0 — Integration test suite + Gateway rate limiting ✅ complete
 
 - [x] gateway: request rate limiting on `/approve/:id` and `/reject/:id` (prevent duplicate approval spam)
@@ -56,3 +51,19 @@
 - [x] Test: end-to-end approval flow — POST /approve/:id → DB state change → ouro_notify event published
 - [x] Test: OIDC middleware integration test — verifies discovery-doc fetch path via mocked fetch
 - [x] meta-agent: configurable watchdog interval via `OURO_WATCHDOG_INTERVAL_MS` env var (was hardcoded 60s)
+
+## v0.7.0 — Job cancellation + MCP revalidation + smart WebSocket dispatch ✅ complete
+
+- [x] ui: `POST /api/jobs/:id/cancel` — set status to `cancellation_requested`, publish event; returns 404/409 for unknown/terminal jobs
+- [x] meta-agent worker-dispatch: `checkCancellations()` runs every 3s — SIGTERMs active workers whose job has `cancellation_requested` status, updates DB to `cancelled`
+- [x] ui: Jobs.vue — cancel button shown for `running`/`pending` jobs; optimistic status update on click
+- [x] ui: `POST /api/mcp/:name/revalidate` — proxies to mcp-factory `POST /mcp/test/:name`
+- [x] mcp-factory: `POST /mcp/test/:name` now publishes `ouro_notify { type: 'mcp_revalidated' }` after DB update
+- [x] ui: McpRegistry.vue — revalidate button per row, disables while in-flight
+- [x] useWebSocket: smart event dispatch — mcp events refresh mcpStore, evolution events refresh feedbackStore, job events refresh jobsStore (was always refreshing jobs regardless of event type)
+- [x] Tests: 3 new tests for `POST /api/jobs/:id/cancel` (200, 409, 404); total 157 tests
+
+## Pending
+
+- [ ] Push main branch to origin — requires human action
+- [ ] npm publish: run `pnpm -r publish --access public` once org namespace `@ouroboros` is claimed
