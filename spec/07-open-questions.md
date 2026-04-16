@@ -56,9 +56,9 @@ Task runs until claude exits. Progress streamed live to UI + gateway. If no outp
 SSE was considered but WebSocket enables bi-directional commands (subscribe/unsubscribe to specific job streams). Already a dependency in cc-agent-ui.
 
 ### OQ-08: UI framework ✅ DECIDED
-**Decision:** Vanilla JS, single index.html, Node.js HTTP server — same stack as cc-agent-ui.
+**Decision:** Vue 3 + TypeScript + Vite + Pinia. Node.js Express server. WebSocket for live updates.
 
-No React, no Vue, no Next.js. The meta-agent needs to be able to modify the UI with a text editor. Single file = trivially modifiable. JetBrains Mono, dark terminal aesthetic.
+No React, no Next.js, no UI component library. Vue 3 SFCs with `<script setup>` are compact and readable — easy for the meta-agent to modify components individually. TypeScript catches regressions. Vite builds fast. Pinia gives reactive stores without boilerplate. Custom CSS only, dark terminal aesthetic matching cc-agent-ui palette.
 
 ---
 

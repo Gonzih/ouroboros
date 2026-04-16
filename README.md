@@ -10,7 +10,7 @@ The meta-agent improves its own codebase from user feedback. Worker agents execu
 
 | Concern | Decision |
 |---------|----------|
-| UI stack | Vanilla JS, single `index.html`, Node.js + WebSocket. No framework. |
+| UI stack | Vue 3 + TypeScript + Vite + Pinia. Node.js Express. WebSocket for live updates. No component library. |
 | Gateway | `ChannelAdapter` interface — Telegram, Slack, webhook. Not Telegram-only. |
 | Self-evolution | Auto-open PR → notify user with diff → user `/approve` → merge. User = QA. |
 | Worker timeout | None. Stream output live. Warn after 10min idle. |

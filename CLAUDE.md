@@ -32,7 +32,7 @@ packages/
 
 ## Key Decisions (do not re-litigate without updating spec/07)
 
-- **UI stack**: vanilla JS + single index.html + Node.js HTTP + WebSocket. No React, no Vue, no Next.js.
+- **UI stack**: Vue 3 + TypeScript + Vite + Pinia. Node.js Express server. WebSocket for live updates. No UI component library — custom CSS only.
 - **Gateway**: channel abstraction — ChannelAdapter interface, Telegram is one adapter.
 - **Evolution**: auto-open PR, send diff to user, user approves via /approve before merge. User = QA.
 - **Worker timeout**: none. Stream output live. Warn after 10min idle.
