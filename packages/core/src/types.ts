@@ -15,6 +15,9 @@ export interface Job {
   startedAt?: Date
   completedAt?: Date
   error?: string
+  pid?: number
+  sessionId?: string
+  lastHeartbeat?: Date
 }
 
 export interface McpConfig {

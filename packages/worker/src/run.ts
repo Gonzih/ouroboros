@@ -1,6 +1,16 @@
+import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { getDb, publish, log } from '@ouroboros/core'
+import {
+  getDb,
+  publish,
+  log,
+  registerProcess,
+  unregisterProcess,
+  setJobSession,
+  setJobHeartbeat,
+  heartbeat,
+} from '@ouroboros/core'
 import type { StorageBackend } from './backends/interface.js'
 import { gitBackend } from './backends/git.js'
 import { localBackend } from './backends/local.js'
@@ -13,6 +23,7 @@ interface TaskInput {
   backend: string
   target: string
   instructions: string
+  sessionId?: string
 }
 
 function selectBackend(name: string): StorageBackend {
@@ -62,11 +73,23 @@ export async function run(): Promise<void> {
     throw new Error(`failed to parse OURO_TASK: ${raw}`)
   }
 
-  const { id, backend: backendName, target, instructions } = task
+  const { id, backend: backendName, target, instructions, sessionId: existingSessionId } = task
   const backend = selectBackend(backendName)
 
   await log('worker', `starting job ${id} (backend=${backendName}, target=${target})`)
   await updateJobStatus(id, 'running')
+
+  // Register this worker process and record the PID on the job
+  const procName = `worker:${id}`
+  await registerProcess(procName, process.pid, 'node', [])
+  const newSessionId = randomUUID()
+  await setJobSession(id, process.pid, existingSessionId ?? newSessionId)
+
+  // Heartbeat: update ouro_jobs.last_heartbeat and ouro_processes.last_heartbeat every 30s
+  const heartbeatInterval = setInterval(() => {
+    void setJobHeartbeat(id).catch(() => undefined)
+    void heartbeat(procName).catch(() => undefined)
+  }, 30_000)
 
   let workdir: string | null = null
   let finalStatus: 'completed' | 'failed' = 'failed'
@@ -86,6 +109,11 @@ export async function run(): Promise<void> {
       'If you cannot complete it, respond with exactly: TASK_FAILED:{reason}',
     ].join('\n')
 
+    // Use --continue when resuming an interrupted session (sessionId was set by prior run)
+    const claudeArgs: string[] = existingSessionId !== undefined
+      ? ['--continue', '--dangerously-skip-permissions']
+      : ['--print', '--dangerously-skip-permissions', '-p', prompt]
+
     const outputLines: string[] = []
     let taskDone = false
     let taskFailed = false
@@ -95,16 +123,16 @@ export async function run(): Promise<void> {
     const idleTimer = setInterval(async () => {
       const idleSecs = Math.floor((Date.now() - lastOutputAt) / 1000)
       if (idleSecs >= 600) {
-        const heartbeat = `worker: still running (no output for ${idleSecs}s)`
-        await insertOutputLine(id, heartbeat)
-        await log('worker', heartbeat)
+        const msg = `worker: still running (no output for ${idleSecs}s)`
+        await insertOutputLine(id, msg)
+        await log('worker', msg)
       }
     }, 60_000)
 
     await new Promise<void>((resolve, reject) => {
       const proc = spawn(
         'claude',
-        ['--print', '--dangerously-skip-permissions', '-p', prompt],
+        claudeArgs,
         {
           cwd: workdir!,
           env: { ...process.env },
@@ -161,6 +189,8 @@ export async function run(): Promise<void> {
     failReason = String(err instanceof Error ? err.message : err)
     await log('worker', `job ${id} failed: ${failReason}`)
   } finally {
+    clearInterval(heartbeatInterval)
+    await unregisterProcess(procName).catch(() => undefined)
     if (workdir !== null) {
       try {
         await backend.cleanup(workdir)

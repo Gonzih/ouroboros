@@ -1,7 +1,11 @@
 import { spawnSync } from 'node:child_process'
-import { dequeue, ack, nack, getDb, log, publish } from '@ouroboros/core'
+import { dequeue, ack, nack, getDb, log, publish, releaseLock } from '@ouroboros/core'
 import type { FeedbackEvent } from '@ouroboros/core'
 import { findClaudeBin } from '../claude.js'
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
 
 // 7 days in seconds — message stays invisible while we poll for approval
 const VISIBILITY_TIMEOUT_SECS = 7 * 24 * 60 * 60
@@ -83,7 +87,30 @@ async function pollForApproval(
       await ack('ouro_feedback', msgId)
       await publish('ouro_notify', { type: 'evolution_applied', feedbackId, prUrl })
       await log('meta-agent:evolution', `feedback ${feedbackId} applied (PR merged)`)
-      return
+
+      // Rebuild with new code — only restart if build succeeds
+      await log('meta-agent:evolution', `Evolution ${feedbackId} applied — rebuilding...`)
+      await publish('ouro_notify', { type: 'rebuilding', feedbackId })
+
+      const buildResult = spawnSync('pnpm', ['build'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      })
+
+      if (buildResult.status !== 0) {
+        const stderr = buildResult.stderr ?? 'unknown error'
+        await log('meta-agent:evolution', `Rebuild failed: ${stderr}`)
+        await publish('ouro_notify', { type: 'rebuild_failed', error: stderr })
+        return  // keep running old binary — do not restart
+      }
+
+      await log('meta-agent:evolution', 'Rebuild successful — graceful restart')
+      await publish('ouro_notify', { type: 'restarting', reason: 'evolution_applied' })
+      // Release advisory lock so the new process can acquire it
+      await releaseLock('ouro:meta-agent')
+      // Give gateway time to broadcast the restart notification
+      await sleep(2000)
+      process.exit(0)
     }
 
     if (status === 'rejected') {
