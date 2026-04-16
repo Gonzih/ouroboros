@@ -181,23 +181,40 @@ describe('createOidcMiddleware', () => {
   })
 
   it('returns 401 for a tampered token', async () => {
-    const middleware = await makeMiddleware()
-    const token = await signToken()
-    const parts = token.split('.')
-    const sig = parts[2] ?? ''
-    parts[2] = sig.slice(0, -1) + (sig.endsWith('a') ? 'b' : 'a')
-    const tampered = parts.join('.')
+    // jose re-fetches the JWKS once on signature failure (key-rotation check).
+    // Stub fetch so the re-fetch of the data: URI completes instantly rather than
+    // hanging in environments where native fetch doesn't support data: URIs.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string | URL | Request) => {
+      const urlStr = url instanceof Request ? url.url : String(url)
+      const m = /^data:[^;]+;base64,([^&\s]+)/.exec(urlStr)
+      if (m) {
+        const json = Buffer.from(m[1]!, 'base64').toString()
+        return new Response(json, { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      throw new Error(`unexpected fetch: ${urlStr}`)
+    }))
 
-    const req = { headers: { authorization: `Bearer ${tampered}` } } as Request
-    const raw = mockRes()
-    const res = asExpressRes(raw)
+    try {
+      const middleware = await makeMiddleware()
+      const token = await signToken()
+      const parts = token.split('.')
+      const sig = parts[2] ?? ''
+      parts[2] = sig.slice(0, -1) + (sig.endsWith('a') ? 'b' : 'a')
+      const tampered = parts.join('.')
 
-    await new Promise<void>((resolve) => {
-      middleware(req, res, resolve as NextFunction)
-      setTimeout(resolve, 200)
-    })
+      const req = { headers: { authorization: `Bearer ${tampered}` } } as Request
+      const raw = mockRes()
+      const res = asExpressRes(raw)
 
-    expect(raw.statusCode).toBe(401)
-    expect((raw.body as { error: string }).error).toMatch(/token validation failed/)
+      await new Promise<void>((resolve) => {
+        middleware(req, res, resolve as NextFunction)
+        setTimeout(resolve, 500)
+      })
+
+      expect(raw.statusCode).toBe(401)
+      expect((raw.body as { error: string }).error).toMatch(/token validation failed/)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

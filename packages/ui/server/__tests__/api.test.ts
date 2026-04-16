@@ -152,6 +152,31 @@ describe('UI REST API routes', () => {
     })
   })
 
+  describe('POST /api/jobs/:id/retry', () => {
+    it('retries a failed job and enqueues a new task', async () => {
+      mockDb
+        .mockResolvedValueOnce([{ description: 'Fix bug', backend: 'git', target: 'https://github.com/owner/repo', status: 'failed' }])
+        .mockResolvedValueOnce([])
+      const res = await request(app).post('/api/jobs/j1/retry')
+      expect(res.status).toBe(200)
+      expect(typeof res.body.id).toBe('string')
+      expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({ backend: 'git', instructions: 'Fix bug' }))
+    })
+
+    it('returns 409 when job is not in a retryable state', async () => {
+      mockDb.mockResolvedValueOnce([{ description: 'Task', backend: 'git', target: 'repo', status: 'running' }])
+      const res = await request(app).post('/api/jobs/j1/retry')
+      expect(res.status).toBe(409)
+      expect(res.body.status).toBe('running')
+    })
+
+    it('returns 404 when job does not exist', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).post('/api/jobs/no-such-job/retry')
+      expect(res.status).toBe(404)
+    })
+  })
+
   describe('POST /api/jobs/:id/cancel', () => {
     it('cancels a running job and publishes notify', async () => {
       mockDb.mockResolvedValueOnce({ count: 1 })

@@ -41,6 +41,7 @@ async function insertOutputLine(jobId: string, line: string): Promise<void> {
   try {
     const db = getDb()
     await db`INSERT INTO ouro_job_output (job_id, line) VALUES (${jobId}, ${line})`
+    await publish('ouro_notify', { type: 'job_output_appended', jobId, line })
   } catch (err) {
     process.stderr.write(`[worker] failed to insert output line: ${String(err)}\n`)
   }

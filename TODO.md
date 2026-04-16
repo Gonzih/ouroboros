@@ -63,6 +63,15 @@
 - [x] useWebSocket: smart event dispatch — mcp events refresh mcpStore, evolution events refresh feedbackStore, job events refresh jobsStore (was always refreshing jobs regardless of event type)
 - [x] Tests: 3 new tests for `POST /api/jobs/:id/cancel` (200, 409, 404); total 157 tests
 
+## v0.8.0 — Live output push + job retry + job status filter ✅ complete
+
+- [x] worker: `insertOutputLine` publishes `ouro_notify { type: 'job_output_appended', jobId, line }` after each DB write
+- [x] useWebSocket: handle `job_output_appended` — route to `jobsStore.appendOutput()` for real-time output display
+- [x] ui: `POST /api/jobs/:id/retry` — clone failed/cancelled job as new pending entry, re-enqueue; 409 for non-retryable, 404 for unknown
+- [x] ui: jobs store `retryJob(id)` action
+- [x] ui: Jobs.vue — retry button for failed/cancelled rows; status filter tabs (all/pending/running/completed/failed/cancelled)
+- [x] Tests: 3 retry-endpoint tests + 1 worker output-publish test; total 186 tests
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

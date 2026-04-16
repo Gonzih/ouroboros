@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useJobsStore } from '../stores/jobs'
 import StatusBadge from '../components/StatusBadge.vue'
 import LiveOutput from '../components/LiveOutput.vue'
@@ -7,6 +7,16 @@ import LiveOutput from '../components/LiveOutput.vue'
 const jobsStore = useJobsStore()
 const expandedId = ref<string | null>(null)
 const cancellingId = ref<string | null>(null)
+const retryingId = ref<string | null>(null)
+const statusFilter = ref<string>('all')
+
+const STATUS_FILTERS = ['all', 'pending', 'running', 'completed', 'failed', 'cancelled'] as const
+
+const filteredJobs = computed(() =>
+  statusFilter.value === 'all'
+    ? jobsStore.jobs
+    : jobsStore.jobs.filter(j => j.status === statusFilter.value)
+)
 
 onMounted(() => { void jobsStore.fetchJobs() })
 
@@ -26,6 +36,18 @@ async function cancelJob(id: string, event: Event): Promise<void> {
   }
 }
 
+async function retryJob(id: string, event: Event): Promise<void> {
+  event.stopPropagation()
+  retryingId.value = id
+  try {
+    await jobsStore.retryJob(id)
+  } catch (err: unknown) {
+    alert(String(err))
+  } finally {
+    retryingId.value = null
+  }
+}
+
 function elapsed(job: { started_at: string | null; completed_at: string | null; status: string }): string {
   const start = job.started_at ? new Date(job.started_at).getTime() : null
   if (!start) return '—'
@@ -40,12 +62,20 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
   <div>
     <div class="toolbar">
       <span class="section-title" style="margin-bottom:0">jobs</span>
+      <div class="filters">
+        <button
+          v-for="f in STATUS_FILTERS"
+          :key="f"
+          :class="{ active: statusFilter === f }"
+          @click="statusFilter = f"
+        >{{ f }}</button>
+      </div>
       <button @click="jobsStore.fetchJobs()">refresh</button>
     </div>
 
     <div v-if="jobsStore.loading" class="dim-text">loading...</div>
     <div v-else-if="jobsStore.error" class="error-text">{{ jobsStore.error }}</div>
-    <div v-else-if="jobsStore.jobs.length === 0" class="dim-text">no jobs</div>
+    <div v-else-if="filteredJobs.length === 0" class="dim-text">no jobs</div>
 
     <table v-else>
       <thead>
@@ -60,7 +90,7 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
         </tr>
       </thead>
       <tbody>
-        <template v-for="job in jobsStore.jobs" :key="job.id">
+        <template v-for="job in filteredJobs" :key="job.id">
           <tr class="job-row" @click="toggle(job.id)">
             <td class="mono-id">{{ job.id.slice(0, 8) }}</td>
             <td class="description">{{ job.description.slice(0, 80) }}</td>
@@ -68,7 +98,7 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
             <td><StatusBadge :status="job.status" /></td>
             <td class="dim-cell">{{ new Date(job.created_at).toLocaleString() }}</td>
             <td class="dim-cell">{{ elapsed(job) }}</td>
-            <td>
+            <td class="action-cell">
               <button
                 v-if="job.status === 'running' || job.status === 'pending'"
                 class="cancel-btn"
@@ -76,6 +106,14 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
                 @click="cancelJob(job.id, $event)"
               >
                 {{ cancellingId === job.id ? '…' : 'cancel' }}
+              </button>
+              <button
+                v-if="job.status === 'failed' || job.status === 'cancelled'"
+                class="retry-btn"
+                :disabled="retryingId === job.id"
+                @click="retryJob(job.id, $event)"
+              >
+                {{ retryingId === job.id ? '…' : 'retry' }}
               </button>
             </td>
           </tr>
@@ -95,8 +133,20 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
 .toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.filters {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.filters button.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .mono-id {
@@ -118,6 +168,11 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
   font-size: 11px;
 }
 
+.action-cell {
+  display: flex;
+  gap: 4px;
+}
+
 .job-row {
   cursor: pointer;
 }
@@ -136,6 +191,17 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
 
 .cancel-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--red) 15%, transparent);
+}
+
+.retry-btn {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.retry-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .dim-text {

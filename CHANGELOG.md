@@ -1,3 +1,12 @@
+## v0.8.0 — Live output push + job retry + job status filter
+
+- worker: `insertOutputLine` now publishes `ouro_notify { type: 'job_output_appended', jobId, line }` after each DB insert. Output lines are pushed to all connected UI clients in real time via the existing LISTEN/NOTIFY → WebSocket pipeline.
+- useWebSocket: `job_output_appended` events are routed to `jobsStore.appendOutput()` — live output appears in the expanded job row without waiting for the 2 s poll cycle.
+- ui: `POST /api/jobs/:id/retry` — clones a `failed` or `cancelled` job as a new `pending` entry and re-enqueues it to `ouro_tasks`. Returns 409 for non-retryable states, 404 for unknown IDs.
+- ui: Jobs store — `retryJob(id)` action; fetches updated job list on success.
+- ui: Jobs.vue — retry button appears for `failed` and `cancelled` rows (accent colour, disables while in-flight). Status filter tabs (all / pending / running / completed / failed / cancelled) added to toolbar; client-side filter via computed property.
+- Tests: 3 new retry-endpoint tests (200 retry, 409 non-retryable, 404 not-found). 1 new worker test verifying `publish` is called with `job_output_appended` on each output line. Total: 186 tests across all packages.
+
 ## v0.7.0 — Job cancellation + MCP revalidation + smart WebSocket dispatch
 
 - ui: `POST /api/jobs/:id/cancel` — sets job status to `cancellation_requested` and publishes `job_cancel_requested` event. Returns 409 if job is already in a terminal state, 404 if not found.

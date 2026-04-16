@@ -7,6 +7,7 @@ import { useFeedbackStore } from '../stores/feedback'
 interface NotifyPayload {
   type: string
   jobId?: string
+  line?: string
   status?: string
   name?: string
   feedbackId?: string
@@ -58,7 +59,9 @@ export function useWebSocket(): void {
 
       if (msg.type === 'notify' && msg.payload) {
         const eventType = msg.payload.type
-        if (MCP_EVENT_TYPES.has(eventType)) {
+        if (eventType === 'job_output_appended' && msg.payload.jobId && msg.payload.line) {
+          jobsStore.appendOutput(msg.payload.jobId, msg.payload.line)
+        } else if (MCP_EVENT_TYPES.has(eventType)) {
           void mcpStore.fetchMcp()
         } else if (FEEDBACK_EVENT_TYPES.has(eventType)) {
           void feedbackStore.fetchFeedback()

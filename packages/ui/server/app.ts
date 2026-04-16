@@ -200,6 +200,33 @@ apiRouter.post('/jobs/:id/cancel', async (req, res) => {
   }
 })
 
+apiRouter.post('/jobs/:id/retry', async (req, res) => {
+  const id = req.params['id'] ?? ''
+  if (!id) { res.status(400).json({ error: 'id required' }); return }
+  try {
+    const db = getDb()
+    const rows = await db<{ description: string; backend: string; target: string; status: string }[]>`
+      SELECT description, backend, target, status FROM ouro_jobs WHERE id = ${id}
+    `
+    if (rows.length === 0) { res.status(404).json({ error: 'job not found' }); return }
+    const job = rows[0]!
+    if (job.status !== 'failed' && job.status !== 'cancelled') {
+      res.status(409).json({ error: 'can only retry failed or cancelled jobs', status: job.status })
+      return
+    }
+    const newId = randomUUID()
+    await db`
+      INSERT INTO ouro_jobs (id, description, backend, target, status)
+      VALUES (${newId}, ${job.description}, ${job.backend}, ${job.target}, 'pending')
+    `
+    await enqueue('ouro_tasks', { id: newId, backend: job.backend, target: job.target, instructions: job.description })
+    await log('ui', `retrying job ${id} as new job ${newId}`)
+    res.json({ id: newId })
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
 apiRouter.post('/mcp/register', async (req, res) => {
   try {
     const response = await fetch(`${MCP_FACTORY_URL}/mcp/register`, {

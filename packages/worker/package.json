@@ -1,6 +1,6 @@
 {
   "name": "@ouroboros/worker",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Executes tasks using available MCP tools, reports to Postgres",
   "type": "module",
   "main": "./dist/index.js",

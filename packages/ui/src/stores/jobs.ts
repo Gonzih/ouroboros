@@ -91,5 +91,16 @@ export const useJobsStore = defineStore('jobs', () => {
     updateJob({ id, status: 'cancellation_requested' })
   }
 
-  return { jobs, loading, error, outputMap, fetchJobs, fetchOutput, submitTask, updateJob, appendOutput, cancelJob }
+  async function retryJob(id: string): Promise<string> {
+    const res = await fetch(`/api/jobs/${id}/retry`, { method: 'POST' })
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string }
+      throw new Error(data.error ?? 'Failed to retry job')
+    }
+    const data = (await res.json()) as { id: string }
+    await fetchJobs()
+    return data.id
+  }
+
+  return { jobs, loading, error, outputMap, fetchJobs, fetchOutput, submitTask, updateJob, appendOutput, cancelJob, retryJob }
 })
