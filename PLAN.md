@@ -1,55 +1,43 @@
-# PLAN: packages/gateway — Full Implementation
+# PLAN: packages/ui — Vue 3 Dashboard
 
-## Task Restatement
-Implement the notification/command gateway in `packages/gateway`. LISTEN/NOTIFY subscriber bridges Postgres events to outbound channels (Telegram, Slack, webhook, log). TelegramAdapter has full inbound command handling for approval workflow. All other adapters are outbound-only. Gateway starts all configured adapters based on env vars.
+## Task Summary
+Implement `packages/ui`: a Vue 3 SPA with an Express + WebSocket backend serving on port 7702.
+5 views (Dashboard, Jobs, Logs, Feedback, MCP Registry). Dark terminal CSS, no component library,
+Pinia state management, live updates via WebSocket bridging Postgres LISTEN/NOTIFY.
 
 ## Approaches Considered
 
-### A: Single flat file with all adapters inline
-Simple but messy — hard to read, hard to add new adapters.
+### A) Full SSR with Vue (Nuxt)
+- Pro: SEO, fast first paint
+- Con: Overkill for an internal tool, more complex build
+- Rejected
 
-### B: One adapter per file in src/adapters/ + src/gateway.ts + src/index.ts (chosen)
-Each adapter is its own module. Gateway orchestrates. Matches spec file layout exactly.
+### B) Separate frontend (Vite dev server) + separate API server
+- Pro: Clean separation, fast HMR
+- Con: Two processes, CORS complexity, harder to deploy
+- Rejected
 
-### C: Plugin system with dynamic adapter loading
-Over-engineered for v1 — static adapter loading is sufficient.
+### C) Single Express server serving Vite-built static bundle + REST API + WebSocket (CHOSEN)
+- Pro: One binary, one port (7702), simple to deploy and evolve
+- Matches spec exactly, simplest production model
 
-## Chosen Approach: B
-Clean separation of concerns. Each adapter is independently readable. Matches spec exactly.
+## Files to Create/Modify
+- `packages/ui/package.json` — replace stub with full deps
+- `packages/ui/tsconfig.json` — frontend (bundler resolution, DOM lib, noEmit)
+- `packages/ui/tsconfig.server.json` — extends base, Node16 for server
+- `packages/ui/vite.config.ts`
+- `packages/ui/index.html`
+- `packages/ui/server/index.ts` — Express + WS + REST API
+- `packages/ui/src/main.ts` — replace stub
+- `packages/ui/src/App.vue`
+- `packages/ui/src/router/index.ts`
+- `packages/ui/src/composables/useWebSocket.ts`
+- `packages/ui/src/stores/jobs.ts`, `mcp.ts`, `logs.ts`, `feedback.ts`
+- `packages/ui/src/views/Dashboard.vue`, `Jobs.vue`, `Logs.vue`, `Feedback.vue`, `McpRegistry.vue`
+- `packages/ui/src/components/StatusBadge.vue`, `LiveOutput.vue`
 
-## Files to Create
-- `packages/gateway/src/adapters/telegram.ts` — polling bot, inbound commands, outbound send
-- `packages/gateway/src/adapters/slack.ts` — outbound only via Slack Web API or incoming webhook
-- `packages/gateway/src/adapters/webhook.ts` — generic outbound POST
-- `packages/gateway/src/adapters/log.ts` — always-active stdout + ouro_logs adapter
-- `packages/gateway/src/gateway.ts` — Gateway class with broadcast + LISTEN/NOTIFY subscription
-- `packages/gateway/src/index.ts` — start() entrypoint
-- `packages/gateway/package.json`
-- `packages/gateway/tsconfig.json`
-
-## Key Design Decisions
-- Adapters instantiated if and only if required env vars are present
-- LogAdapter always active regardless of other adapters
-- LISTEN/NOTIFY subscription via `subscribe()` from @ouroboros/core
-- Telegram uses polling (setInterval + getUpdates) — no webhook server needed
-- `node-telegram-bot-api` for Telegram (polling mode)
-- Slack outbound via POST to SLACK_WEBHOOK_URL (simpler) or Web API if only bot token given
-- All adapters implement ChannelAdapter interface
-- Inbound Telegram commands routed to DB queries (approve/reject) or DB reads (status/jobs/mcp)
-- broadcast() sends to all adapters, catches individual errors, continues
-- ESM imports use `.js` extension
-- All array accesses guarded due to `noUncheckedIndexedAccess: true`
-- `exactOptionalPropertyTypes: true` — no `obj.prop = undefined`
-
-## Event Routing (ouro_notify → message text)
-- `mcp_registered` → "MCP {name} registered. Status: {status}. Tools: {tools}"
-- `mcp_removed` → "MCP {name} removed."
-- `job_complete` → "Job {jobId} {status}." (+ error if failed)
-- `evolution_proposed` → full diff + approve/reject instructions
-- `evolution_result` → "Evolution {id} {status}."
-
-## Risks & Unknowns
-- Slack: no SLACK_WEBHOOK_URL in env spec, only SLACK_BOT_TOKEN + SLACK_CHANNEL_ID — use Web API `chat.postMessage`
-- node-telegram-bot-api in ESM context — may need careful import handling
-- Polling offset tracking for Telegram to avoid re-processing updates
-- `exactOptionalPropertyTypes` requires care with optional fields in type guards
+## Risks
+- `noUncheckedIndexedAccess`: all `req.params['x']` need `?? ''` fallbacks
+- `exactOptionalPropertyTypes`: no `obj.prop = undefined`
+- Server tsconfig must include ONLY `server/`, not `src/` (Vue SFCs break tsc)
+- Existing `src/index.ts` stub → replaced by `src/main.ts`

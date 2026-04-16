@@ -1,0 +1,139 @@
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useFeedbackStore } from '../stores/feedback'
+import StatusBadge from '../components/StatusBadge.vue'
+
+const feedbackStore = useFeedbackStore()
+const text = ref('')
+const submitError = ref<string | null>(null)
+const submitSuccess = ref(false)
+
+onMounted(() => { void feedbackStore.fetchFeedback() })
+
+async function submit(): Promise<void> {
+  if (!text.value.trim()) return
+  submitError.value = null
+  submitSuccess.value = false
+  try {
+    await feedbackStore.submitFeedback(text.value.trim())
+    text.value = ''
+    submitSuccess.value = true
+    setTimeout(() => { submitSuccess.value = false }, 3000)
+  } catch (err: unknown) {
+    submitError.value = String(err)
+  }
+}
+</script>
+
+<template>
+  <div>
+    <div class="section-title">submit feedback</div>
+
+    <div class="card submit-card">
+      <div class="warning-banner">
+        Submitting feedback triggers code changes to Ouroboros. You will receive a diff to approve.
+      </div>
+      <textarea
+        v-model="text"
+        placeholder="describe the change you want..."
+        rows="5"
+        class="full-width"
+      />
+      <div class="submit-row">
+        <button
+          :disabled="feedbackStore.submitting || !text.trim()"
+          @click="submit"
+        >
+          {{ feedbackStore.submitting ? 'submitting...' : 'submit feedback' }}
+        </button>
+        <span v-if="submitSuccess" class="success-text">feedback submitted</span>
+        <span v-if="submitError" class="error-text">{{ submitError }}</span>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:24px">history</div>
+    <div v-if="feedbackStore.loading" class="dim-text">loading...</div>
+    <div v-else-if="feedbackStore.error" class="error-text">{{ feedbackStore.error }}</div>
+    <div v-else-if="feedbackStore.feedbacks.length === 0" class="dim-text">no feedback submitted yet</div>
+    <table v-else>
+      <thead>
+        <tr>
+          <th>id</th>
+          <th>text</th>
+          <th>status</th>
+          <th>pr</th>
+          <th>submitted</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="fb in feedbackStore.feedbacks" :key="fb.id">
+          <td class="mono-id">{{ fb.id.slice(0, 8) }}</td>
+          <td class="fb-text">{{ fb.text.slice(0, 100) }}</td>
+          <td><StatusBadge :status="fb.status" /></td>
+          <td>
+            <a v-if="fb.pr_url" :href="fb.pr_url" target="_blank" rel="noopener">view pr</a>
+            <span v-else class="dim-text">—</span>
+          </td>
+          <td class="dim-cell">{{ new Date(fb.created_at).toLocaleString() }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</template>
+
+<style scoped>
+.submit-card {
+  margin-bottom: 8px;
+}
+
+.warning-banner {
+  background: color-mix(in srgb, var(--yellow) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--yellow) 30%, transparent);
+  color: var(--yellow);
+  border-radius: 3px;
+  padding: 8px 12px;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.full-width {
+  width: 100%;
+  resize: vertical;
+  margin-bottom: 10px;
+}
+
+.submit-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.success-text {
+  color: var(--green);
+  font-size: 12px;
+}
+
+.mono-id {
+  font-family: var(--font);
+  color: var(--dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.fb-text {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dim-cell {
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.dim-text {
+  color: var(--dim);
+  font-size: 12px;
+}
+</style>
