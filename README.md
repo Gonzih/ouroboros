@@ -2,7 +2,7 @@
 
 Self-hosted AI data infrastructure. Connects proprietary data to Claude Code via dynamically provisioned MCP servers. Runs on customer hardware. Data never leaves the machine.
 
-**Status: v0.1.0 implemented. Core loops running.**
+**Status: v0.2.0 — Cycling loop: persistent Claude coordinator + control plane MCP.**
 
 ---
 
@@ -97,11 +97,11 @@ Loop 4 — Watchdog
 - [x] Cross-platform installer (macOS launchd, Linux systemd, Windows NSSM)
 - [x] Vue 3 UI on port 7702, MCP factory HTTP on port 7703
 
-### v0.2 — Cycling Loop (roadmap)
+### v0.2 — Cycling Loop (implemented)
 - [x] `@ouroboros/mcp-server` — Control MCP exposing Ouroboros internals as tools
-- [ ] Persistent Claude `--continue` session as meta-agent coordinator
-- [ ] Claude self-diagnosis: `get_logs()` → notice → `submit_feedback()` → auto-propose fix
-- [ ] Long-horizon reasoning: single session accumulates context across all jobs
+- [x] Persistent Claude `--continue` session as meta-agent coordinator
+- [x] `OURO_LEGACY_LOOPS=true` fallback to v0.1 Node.js polling behavior
+- [x] `.ouro-session` for session continuity across restarts
 
 ### v0.3 — Multi-tenant (future)
 - [ ] OIDC SSO via `OURO_OIDC_ISSUER`
@@ -223,18 +223,23 @@ packages/
   mcp-server/    Control plane MCP server — 14 tools over stdio (v0.2)
 ```
 
-## Control Plane MCP (v0.2)
+## v0.2 — Cycling Loop
 
-Build the package, then connect Claude to it:
+With `@ouroboros/mcp-server` built, you can connect Claude directly to the control plane:
 
 ```bash
-# Build
-pnpm --filter @ouroboros/mcp-server build
-
-# Start a persistent Claude session with full control over Ouroboros
-claude --mcp-config claude-control.json --dangerously-skip-permissions --continue
+# Mount Ouroboros control MCP + your data MCPs into one Claude session
+claude --mcp-config claude-control.json --continue
 ```
 
-Claude now has 14 tools: `list_jobs`, `get_job_output`, `get_job_status`, `spawn_worker`, `cancel_job`, `list_mcps`, `register_mcp`, `delete_mcp`, `test_mcp`, `submit_feedback`, `list_feedback`, `approve_evolution`, `reject_evolution`, `get_logs`.
+Claude can now:
+- `list_jobs()` — see what's running
+- `spawn_worker()` — kick off new tasks
+- `register_mcp()` — connect new data sources on the fly
+- `get_logs()` — diagnose issues
+- `approve_evolution()` — merge self-improvement PRs
 
-With customer data MCPs also mounted, Claude can query customer data **and** control Ouroboros in one persistent session — the cycling loop.
+Combined with customer data MCPs provisioned by mcp-factory, Claude reasons over your data
+AND controls the infrastructure in one persistent session.
+
+The meta-agent runs this session automatically. To use legacy Node.js loops: `OURO_LEGACY_LOOPS=true`
