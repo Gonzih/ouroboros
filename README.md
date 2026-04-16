@@ -1,77 +1,74 @@
 # Ouroboros
 
-Self-evolving autonomous agent infrastructure.
-
-The meta-agent improves its own codebase from user feedback. Worker agents execute tasks across any storage backend. MCP factory connects private data sources as tools at runtime. The user is QA.
+Self-hosted AI data infrastructure. Connects proprietary data to Claude Code via dynamically provisioned MCP servers. Runs on customer hardware. Data never leaves the machine.
 
 **Status: Specced, ready to implement.**
 
-## Core Design Decisions
+---
+
+## What It Does
+
+You have a Postgres database, a folder of PDFs, an internal GitHub repo. You want Claude to reason over them. You give Ouroboros a connection string. It provisions an MCP server, proves it works by testing every tool with Claude, patches your `~/.claude.json`, and tells you it's ready. Claude can now query your database, read your files, and browse your code — all locally, all under your enterprise Anthropic account.
+
+## Hard Constraints
+
+| Constraint | Why |
+|------------|-----|
+| No direct LLM API calls | Enterprise account governs all model access. Data never leaks. |
+| Postgres only | One dependency. pgmq for queues, LISTEN/NOTIFY for events, advisory locks. |
+| Runs on macOS, Linux, Windows | Customer hardware, not a cloud service. |
+| Claude Code CLI only | `claude --print --dangerously-skip-permissions` for all intelligence. |
+
+## Core Design
 
 | Concern | Decision |
 |---------|----------|
-| UI stack | Vue 3 + TypeScript + Vite + Pinia. Node.js Express. WebSocket for live updates. No component library. |
-| Gateway | `ChannelAdapter` interface — Telegram, Slack, webhook. Not Telegram-only. |
-| Self-evolution | Auto-open PR → notify user with diff → user `/approve` → merge. User = QA. |
-| Worker timeout | None. Stream output live. Warn after 10min idle. |
-| Worker isolation | Subprocess (not cc-agent). StorageBackend interface: git/local/s3/gdrive/onedrive. |
-| MCP validation | Spawn Claude with temp config, test all endpoints → OPERATIONAL/PARTIAL/FAILED. |
+| Storage | Postgres only (pgmq + LISTEN/NOTIFY + advisory locks) |
+| Intelligence | Claude Code CLI subprocess. No Anthropic SDK. |
+| UI | Vue 3 + TypeScript + Vite + Pinia. Express + WebSocket. |
+| Gateway | `ChannelAdapter` interface — Telegram, Slack, webhook |
+| MCP validation | Claude tests every tool endpoint. OPERATIONAL/PARTIAL/FAILED. |
+| Self-evolution | PR → user gets diff → `/approve` → merge. User is QA. |
+| Platform | Cross-platform. Installer generates platform supervisor config. |
 | Auth | None v1. Future: OIDC SSO via `OURO_OIDC_ISSUER`. |
-| Storage | git + local in v1. S3/GDrive/OneDrive stubbed, implement via Ouroboros loop. |
-| Publishing | `@ouroboros/*` on npm, public, after v1 stable. |
 
 ## Spec Index
 
 | File | What it covers |
 |------|---------------|
-| `spec/00-overview.md` | Vision, three loops, comparison to cc-agent |
-| `spec/01-core.md` | Shared types, Redis client, logger, event bus |
-| `spec/02-meta-agent.md` | Self-evolution loop (approval gate), worker dispatch, MCP watch |
-| `spec/03-worker.md` | StorageBackend interface, git/local/s3/gdrive/onedrive impls, live streaming |
-| `spec/04-ui.md` | Vanilla JS UI, WebSocket protocol, pages, API routes |
-| `spec/05-gateway.md` | ChannelAdapter interface, Telegram/Slack/webhook adapters, approval flow |
-| `spec/06-mcp-factory.md` | Dynamic provisioning, heavy validation via Claude, connection string schemes |
-| `spec/07-open-questions.md` | All 13 decisions resolved with rationale |
-
-## Monorepo Layout
-
-```
-packages/
-  core/          shared types, Redis, logger, event bus
-  meta-agent/    always-on coordinator
-  worker/        stateless task executor (spawned per task)
-  ui/            vanilla JS web UI (port 7702)
-  gateway/       multi-channel notification bridge
-  mcp-factory/   runtime MCP provisioning (port 7703)
-```
-
-## The Three Loops
-
-```
-1. SELF-EVOLUTION (Ouroboros)
-   user feedback → ouro:feedback → meta-agent → claude subprocess
-   → PR opened → user notified with diff → user /approve → merge → notify
-
-2. WORKER DISPATCH
-   user task → ouro:tasks → meta-agent → worker subprocess
-   → storage backend prepare → claude runs → commit/push → notify
-
-3. MCP PROVISIONING
-   register data source → mcp-factory validates → ~/.claude.json patched
-   → next claude subprocess has the tool available
-```
+| `spec/00-overview.md` | Core purpose, three loops, who runs this, what it is NOT |
+| `spec/01-core.md` | Postgres schema, pgmq helpers, LISTEN/NOTIFY event bus, types |
+| `spec/02-meta-agent.md` | Coordinator: MCP watch, worker dispatch, self-evolution loop |
+| `spec/03-worker.md` | StorageBackend interface, task execution, live output streaming |
+| `spec/04-ui.md` | Vue 3 UI, WebSocket protocol, pages, REST API |
+| `spec/05-gateway.md` | ChannelAdapter interface, Telegram/Slack/webhook, approval flow |
+| `spec/06-mcp-factory.md` | Dynamic MCP provisioning, Claude-based validation, connection schemes |
+| `spec/07-open-questions.md` | All decisions resolved with rationale |
 
 ## Environment Variables
 
 ```
-REDIS_URL                required
-CLAUDE_CODE_OAUTH_TOKEN  required (meta-agent self-evolution)
-TELEGRAM_BOT_TOKEN       optional (gateway Telegram adapter)
-TELEGRAM_CHAT_ID         optional
-SLACK_BOT_TOKEN          optional (gateway Slack adapter)
-SLACK_CHANNEL_ID         optional
-OURO_WEBHOOK_URL         optional (gateway webhook adapter)
-GITHUB_TOKEN             optional (git backend worker)
-PORT_UI                  optional (default 7702)
-PORT_MCP_FACTORY         optional (default 7703)
+DATABASE_URL              required   postgres://user:pass@host:5432/ouroboros
+CLAUDE_CODE_OAUTH_TOKEN   required   for meta-agent claude subprocesses
+OURO_REPO_ROOT            required   absolute path to this checkout
+GITHUB_TOKEN              optional   git backend + GitHub MCP
+TELEGRAM_BOT_TOKEN        optional   gateway Telegram adapter
+TELEGRAM_CHAT_ID          optional
+SLACK_BOT_TOKEN           optional   gateway Slack adapter
+SLACK_CHANNEL_ID          optional
+OURO_WEBHOOK_URL          optional   generic outbound webhook
+PORT_UI                   optional   default 7702
+PORT_MCP_FACTORY          optional   default 7703
+```
+
+## Packages
+
+```
+packages/
+  core/          Postgres client, pgmq helpers, LISTEN/NOTIFY, types, migrations
+  meta-agent/    Always-on coordinator (cross-platform, advisory lock singleton)
+  worker/        Stateless task executor with StorageBackend abstraction
+  ui/            Vue 3 web UI (port 7702)
+  gateway/       Multi-channel notification bridge
+  mcp-factory/   Dynamic MCP provisioning with Claude-based validation (port 7703)
 ```

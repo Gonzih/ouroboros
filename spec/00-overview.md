@@ -1,67 +1,84 @@
-# Ouroboros — System Overview Spec
+# Ouroboros — System Overview
 
-## Vision
+## Core Purpose
 
-A self-referential autonomous agent harness. The meta-agent's job is to:
-1. Improve its own codebase based on user feedback (the Ouroboros loop)
-2. Spawn worker agents to do real work across any storage backend
-3. Dynamically provision MCP servers to connect new data sources as tools
+Ouroboros connects proprietary customer data to Claude Code via dynamically provisioned MCP servers. It runs entirely on customer hardware. No data leaves the customer's infrastructure. No direct LLM API calls — all intelligence goes through the `claude` CLI under an enterprise Anthropic account.
 
-Unlike existing systems (cc-agent, cc-tg), Ouroboros is:
-- **Storage-agnostic** — git is one backend, but work can happen in local folders, S3, Google Drive, etc.
-- **Self-modifying** — user feedback directly triggers code changes to Ouroboros itself
-- **MCP-generative** — new data sources can be registered at runtime and become tool-accessible
+The primary value is **MCP provisioning**: a customer has a Postgres database, a folder of PDFs, a Google Drive, an internal API — Ouroboros registers these as MCP tools so Claude can reason over them. The customer doesn't write code to do this. They give Ouroboros a connection string and it figures out the rest.
+
+The secondary value is **autonomous agents**: once Claude has access to the data via MCPs, Ouroboros can spawn workers that use those tools to do real work — analysis, reports, transformations, code generation.
+
+The tertiary value is **self-evolution**: the system improves itself based on user feedback, with the user as QA.
+
+---
+
+## Who Runs This
+
+An enterprise or power user who:
+- Has proprietary data they cannot send to a cloud API
+- Has an Anthropic enterprise account (Claude stays within their org)
+- Wants Claude to reason over their private data without writing glue code
+- Runs macOS, Linux, or Windows
+
+---
 
 ## The Three Loops
 
-### Loop 1 — Self-Evolution (Ouroboros)
+### Loop 1 — MCP Provisioning (primary)
 ```
-user writes feedback
-  → gateway (Telegram) OR ui (/feedback page)
-  → ouro:feedback queue
-  → meta-agent dequeues
-  → spawns claude subprocess: "implement this feedback, open PR, merge"
-  → PR merged → system deployed with new behavior
-  → notify user: "done, here's what changed"
+customer has data source (DB, folder, Drive, API)
+  → register via UI or gateway: "connect my Postgres at pg://..."
+  → mcp-factory parses connection string
+  → generates MCP server config
+  → spawns claude with temp config: "test all tools, report OPERATIONAL/PARTIAL/FAILED"
+  → if operational: writes to ouro_mcp_registry table
+  → patches ~/.claude.json project scope
+  → notifies user: "your Postgres is now available as MCP tools"
+  → next claude subprocess can query that database as a tool
 ```
 
 ### Loop 2 — Worker Dispatch
 ```
-user submits task
-  → ui (/task) OR gateway (/task command)
-  → ouro:tasks queue
-  → meta-agent reads storage backend + target
-  → spawns worker subprocess with task context
-  → worker operates on backend (git/local/s3/gdrive)
-  → reports progress to ouro:jobs:{id}
-  → completion published to ouro:notify
+user submits task: "analyze last week's sales data and write a report"
+  → pushed to pgmq ouro_tasks queue
+  → meta-agent dequeues
+  → spawns worker subprocess with task + available MCP tools in context
+  → worker runs claude: uses registered MCPs to query data, writes output
+  → progress streamed to ouro_jobs table
+  → completion published via NOTIFY 'ouro_notify'
+  → gateway sends user notification with result
 ```
 
-### Loop 3 — MCP Provisioning
+### Loop 3 — Self-Evolution (Ouroboros)
 ```
-user registers data source
-  → ui (/mcp) OR mcp-factory POST /mcp/register
-  → mcp-factory parses connection string
-  → generates claude.json mcpServers entry
-  → writes to ouro:mcp:registry
-  → meta-agent detects new entry
-  → patches ~/.claude.json for project scope
-  → new MCP tool available in next claude subprocess
+user submits feedback: "add a dark mode toggle to the UI"
+  → pushed to pgmq ouro_feedback queue
+  → meta-agent dequeues
+  → spawns claude subprocess at OURO_REPO_ROOT: implement this, open PR
+  → PR opens → user gets diff via gateway → user /approve
+  → meta-agent merges → rebuilds → restarts affected package
+  → user verifies it works → they are QA
 ```
 
-## What Makes This Different from cc-agent
+---
 
-| Feature | cc-agent | Ouroboros |
-|---------|----------|-----------|
-| Storage | git only | git, local, s3, gdrive |
-| Self-modification | no | yes (feedback loop) |
-| MCP provisioning | static config | dynamic at runtime |
-| UI evolution | static | evolves via feedback loop |
-| Multi-project | one repo per agent | pluggable backends |
+## What Makes This Different
 
-## Non-Goals (v1)
+| Property | Typical AI Tool | Ouroboros |
+|----------|----------------|-----------|
+| Data locality | Leaves the machine | Never leaves machine |
+| LLM access | Direct API calls | Claude CLI only (enterprise account) |
+| Data connections | Manual integration code | MCP provisioned from connection string |
+| Storage dependency | Redis / cloud DB | Postgres only (self-hosted) |
+| Platform | Cloud or Mac-only | macOS, Linux, Windows |
+| Evolution | Static | Self-modifying with user approval |
 
-- Not a general IDE or dev environment
-- Not a multi-user SaaS (single-user, single-machine to start)
-- Not replacing Claude Code — it wraps it
-- Not building LLM infrastructure — Claude API handles inference
+---
+
+## What Ouroboros Is NOT
+
+- Not a general-purpose cloud SaaS
+- Not a replacement for Claude Code — it wraps and orchestrates it
+- Not making direct LLM API calls (this is a hard constraint, not a preference)
+- Not storing data in the cloud — Postgres runs on the customer's machine
+- Not requiring internet access to function (except for Claude API calls under enterprise account)

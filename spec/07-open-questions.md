@@ -1,88 +1,100 @@
 # Open Questions — Decision Log
 
-All 12 original questions are now resolved. Recording decisions and rationale here.
-
----
-
-## Meta-Agent
-
-### OQ-01: Self-evolution safety ✅ DECIDED
-**Decision:** Auto-merge with user-as-QA approval gate.
-
-Flow:
-1. Meta-agent implements feedback, opens PR
-2. Gateway sends `evolution_proposed` notification to all channels: "Here's what changed [diff]. Approve with /approve {id}"
-3. User is QA — they verify the system still works and approve
-4. On `/approve`: meta-agent merges. On `/reject`: PR closed.
-
-PR is never auto-merged without user approval. The user sees the diff and tests before confirming.
-
-### OQ-02: Evolution rate limiting ✅ DECIDED
-**Decision:** Approval-based, not time-based.
-
-Since user must approve every evolution before merge, there's an implicit rate limit — the user can only approve one at a time. No separate time throttle needed. Multiple pending evolutions can be queued; user works through them in order.
-
-Dead-letter: if an evolution PR stays unreviewed for 7 days, auto-close and log.
-
----
-
-## Worker
-
-### OQ-03: Worker isolation ✅ DECIDED
-**Decision:** Subprocess (not cc-agent).
-
-Simpler, sufficient for v1. cc-agent adds overhead and a dependency on the cc-agent service being up. Workers are short-lived and isolated by the storage backend's `prepare/cleanup` cycle anyway.
-
-### OQ-04: Local backend git behavior ✅ DECIDED
-**Decision:** Auto git-init.
-
-If target folder has no `.git`: run `git init && git add -A && git commit -m "ouro: initial commit before task"` automatically. User gets a git history of all changes Ouroboros made to their folder.
-
-### OQ-05: Worker timeout ✅ DECIDED
-**Decision:** No hard timeout.
-
-Task runs until claude exits. Progress streamed live to UI + gateway. If no output for > 10 minutes, log a heartbeat warning ("worker {id}: still running, last output 10m ago") but do not kill. User sees what's happening at all times.
-
----
-
-## UI
-
-### OQ-06: Authentication ✅ DECIDED
-**Decision:** No auth for v1. Future: OpenID Connect SSO via single env var `OURO_OIDC_ISSUER`.
-
-### OQ-07: Live updates mechanism ✅ DECIDED
-**Decision:** WebSocket (matching cc-agent-ui pattern).
-
-SSE was considered but WebSocket enables bi-directional commands (subscribe/unsubscribe to specific job streams). Already a dependency in cc-agent-ui.
-
-### OQ-08: UI framework ✅ DECIDED
-**Decision:** Vue 3 + TypeScript + Vite + Pinia. Node.js Express server. WebSocket for live updates.
-
-No React, no Next.js, no UI component library. Vue 3 SFCs with `<script setup>` are compact and readable — easy for the meta-agent to modify components individually. TypeScript catches regressions. Vite builds fast. Pinia gives reactive stores without boilerplate. Custom CSS only, dark terminal aesthetic matching cc-agent-ui palette.
-
----
-
-## MCP Factory
-
-### OQ-09 (was OQ-08): MCP validation ✅ DECIDED
-**Decision:** Heavy validation — spawn Claude with temp MCP config, force it to test every tool endpoint, classify as OPERATIONAL / PARTIAL / FAILED. Only register if OPERATIONAL or PARTIAL. FAILED returns error to caller.
-
-### OQ-10 (was OQ-09): claude.json write conflicts ✅ DECIDED
-**Decision:** Redis lock (`ouro:claude-json:lock`, TTL 10s) before read-merge-write. Single writer at a time.
+All decisions resolved. Recording final state.
 
 ---
 
 ## Storage
 
-### OQ-11 (was OQ-10): S3 / Google Drive / OneDrive priority ✅ DECIDED
-**Decision:** Stub in v1. All three business storage types (S3, GDrive, OneDrive) are wired in the StorageBackend interface but return "not yet implemented" in v1. Implement via the Ouroboros feedback loop when a user needs them — dog-food the system.
+### Storage backend ✅ DECIDED
+**Decision:** Postgres only. No Redis. No Supabase wrapper.
+
+- Queues: `pgmq` extension (ships with Postgres 14+)
+- Pub/sub: `LISTEN/NOTIFY` (built into Postgres, no extra setup)
+- Singleton lock: `pg_try_advisory_lock` (auto-releases on crash, no TTL needed)
+- State: plain tables with indexes
+- One dependency: `DATABASE_URL`. One Docker container or system Postgres.
 
 ---
 
-## General
+## Intelligence Layer
 
-### OQ-12 (was OQ-11): Multi-machine ✅ DECIDED
-**Decision:** Single machine for v1. One Redis, one claude binary, one ~/.claude.json. Multi-machine is a future spec.
+### LLM access ✅ DECIDED
+**Decision:** Claude Code CLI only. No direct Anthropic API calls anywhere in the codebase.
 
-### OQ-13 (was OQ-12): npm publishing ✅ DECIDED
-**Decision:** Public npm under `@ouroboros/*` namespace. Publish after v1 is stable and tested. Goal: teach users how to run self-evolving infrastructure. That's the age we're in.
+All intelligence goes through `spawnSync('claude', ['--print', '--dangerously-skip-permissions', '-p', prompt])`. This ensures:
+- Enterprise Anthropic account governs all model access
+- Data never leaks through a rogue API call  
+- IT can audit what the model sees
+- No API key management in the codebase
+
+---
+
+## Platform
+
+### Cross-platform ✅ DECIDED
+**Decision:** macOS, Linux, Windows all supported.
+
+- No launchd in core code
+- Installer script generates platform-appropriate supervisor config
+- All paths via `path.join()` / `os.homedir()` — never hardcoded
+- `claude` binary must be in PATH (users install Claude Code themselves)
+
+---
+
+## UI
+
+### Framework ✅ DECIDED
+**Decision:** Vue 3 + TypeScript + Vite + Pinia. Node.js Express server. WebSocket for live updates.
+
+No component library. Custom CSS with dark terminal aesthetic. Components are individually modifiable by the meta-agent (self-evolution target).
+
+---
+
+## MCP Factory
+
+### Validation ✅ DECIDED
+**Decision:** Spawn Claude with temp MCP config, call every tool, classify OPERATIONAL/PARTIAL/FAILED. Only register if not FAILED.
+
+This is the core differentiator — we prove the data connection works before claiming it does.
+
+### Supported schemes v1 ✅ DECIDED
+Postgres, filesystem, GitHub, SQLite — fully implemented.
+S3, Google Drive, OneDrive, HTTP API — stubbed (implement via Ouroboros feedback loop).
+
+---
+
+## Meta-Agent
+
+### Self-evolution safety ✅ DECIDED
+**Decision:** PR opens → user notified with diff → `/approve` gate → merge. User is QA. No auto-merge without human approval.
+
+### Evolution rate limiting ✅ DECIDED
+**Decision:** Approval-based implicit rate limit. One pending evolution at a time per feedback item. Dead-letter: auto-close PR after 7 days if unapproved.
+
+### Worker isolation ✅ DECIDED
+**Decision:** Subprocess (not cc-agent). Simpler, sufficient. StorageBackend interface handles backend differences.
+
+### Worker timeout ✅ DECIDED
+**Decision:** No hard timeout. Stream output live. Log heartbeat warning after 10min idle. User sees what's happening.
+
+---
+
+## Gateway
+
+### Channel abstraction ✅ DECIDED
+**Decision:** `ChannelAdapter` interface. Telegram, Slack, generic webhook in v1. Not Telegram-only.
+
+---
+
+## Auth
+
+### Authentication ✅ DECIDED
+**Decision:** None for v1. Future: OIDC SSO via `OURO_OIDC_ISSUER` env var for enterprise/corporate deployment.
+
+---
+
+## Publishing
+
+### npm publishing ✅ DECIDED
+**Decision:** `@ouroboros/*` namespace, public npm. Publish after v1 stable. Goal: make self-hosted AI data infrastructure a one-command install for any enterprise with an Anthropic account.

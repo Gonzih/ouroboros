@@ -1,92 +1,120 @@
 # Ouroboros — Project Instructions
 
-## What This Is
+## What This Actually Is
 
-Ouroboros is a self-evolving autonomous agent infrastructure. The system improves its own codebase and UI based on user feedback while simultaneously spawning worker agents to do real work. Named after the snake that eats its own tail.
+Ouroboros is a **self-hosted AI data infrastructure** that runs on customer hardware. Its primary job is to connect proprietary data sources to Claude Code via dynamically provisioned MCP servers — so Claude can reason over private data without that data ever leaving the customer's machine or going through a third-party API.
 
-This is a monorepo. Every package is runnable. Implementation follows spec files in `spec/` — read them before writing any code.
+Secondary job: spawn autonomous agents to act on that data. The agents are ephemeral workers. The data connections are the durable value.
+
+**The core loop:**
+```
+customer data source (DB, drive, files, APIs)
+  → mcp-factory provisions MCP server
+  → MCP registered in claude project scope
+  → claude code can now read/query/reason over that data
+  → meta-agent spawns workers that use those tools
+  → all intelligence goes through Claude Code CLI (no direct API calls)
+  → data never leaves customer infrastructure
+```
 
 ---
 
-## Operating Rules
+## Hard Constraints
 
-- Read `spec/` before implementing anything
-- Never implement without a spec entry or explicit instruction
-- All packages use TypeScript + pnpm workspaces
-- Redis is the nervous system — all inter-package communication goes through `ouro:*` keys
-- Storage is pluggable — git is one backend, not the only one
-- Every agent task ends with: PR opened → merged → deployed
-- Never push directly to main
+**No direct LLM calls.** All intelligence goes through `claude` CLI subprocess. This ensures:
+- Enterprise Anthropic account controls all model access
+- Data never leaks through a rogue API call
+- Audit trail lives in Claude's session logs
+- Customer IT can inspect exactly what model receives
+
+**Postgres only.** No Redis, no Supabase wrapper, no other storage dependencies. One connection string, one Docker container (or system Postgres). pgmq for queues, LISTEN/NOTIFY for pub/sub, advisory locks for process coordination.
+
+**Cross-platform.** Runs on macOS, Linux, and Windows. No launchd-specific code in core packages. Process management is handled by a cross-platform supervisor (see spec/02).
+
+**No hardcoded paths.** Never assume `/Users/feral/` or `/home/user/`. Always resolve from env vars or config.
+
+---
+
+## Architecture in One Sentence
+
+MCP factory at the center, meta-agent as the coordinator, Postgres as the backbone, Claude Code as the only intelligence layer.
+
+---
 
 ## Package Map
 
 ```
 packages/
-  core/          — shared types, Redis, logging, event bus
-  meta-agent/    — coordinator: self-evolution + worker dispatch + MCP registry
-  worker/        — executes tasks against storage backends (git/local/s3/gdrive/onedrive)
-  ui/            — vanilla JS single-file UI, Node.js + WebSocket (port 7702)
-  gateway/       — multi-channel bridge: Telegram, Slack, webhook (any channel)
-  mcp-factory/   — dynamic MCP provisioning with live validation (port 7703)
+  core/          — shared types, Postgres client, logger, event bus (LISTEN/NOTIFY)
+  meta-agent/    — coordinator: MCP watch, worker dispatch, self-evolution
+  worker/        — executes tasks using available MCP tools, reports to Postgres
+  ui/            — Vue 3 + TypeScript + Vite. Serves on port 7702.
+  gateway/       — ChannelAdapter: Telegram, Slack, webhook. Notification dispatch.
+  mcp-factory/   — dynamic MCP provisioning + validation. Serves on port 7703.
 ```
 
-## Key Decisions (do not re-litigate without updating spec/07)
+---
 
-- **UI stack**: Vue 3 + TypeScript + Vite + Pinia. Node.js Express server. WebSocket for live updates. No UI component library — custom CSS only.
-- **Gateway**: channel abstraction — ChannelAdapter interface, Telegram is one adapter.
-- **Evolution**: auto-open PR, send diff to user, user approves via /approve before merge. User = QA.
-- **Worker timeout**: none. Stream output live. Warn after 10min idle.
-- **MCP validation**: spawn Claude with temp config, test all tool endpoints, OPERATIONAL/PARTIAL/FAILED.
-- **Local backend**: auto git-init if no .git found.
-- **Auth**: none for v1. Future: OIDC SSO via OURO_OIDC_ISSUER env var.
+## Postgres Schema (all state lives here)
 
-## Redis Key Schema
+```sql
+-- Queues (pgmq extension)
+pgmq.create('ouro_tasks');      -- worker task queue
+pgmq.create('ouro_feedback');   -- evolution feedback queue
 
-| Key | Type | Purpose |
-|-----|------|---------|
-| `ouro:logs` | list (capped 2000) | all system logs |
-| `ouro:jobs` | hash | job registry by jobId |
-| `ouro:jobs:{id}` | hash | per-job state + output |
-| `ouro:feedback` | list | user feedback queue → meta-agent |
-| `ouro:tasks` | list | worker task queue → worker |
-| `ouro:notify` | pub/sub | completion events → gateway |
-| `ouro:mcp:registry` | hash | registered MCP configs by name |
-| `ouro:instance:lock` | string | singleton lock (pid, TTL 1800s) |
+-- Tables
+CREATE TABLE ouro_jobs (...)           -- job state + output
+CREATE TABLE ouro_mcp_registry (...)   -- registered MCP configs + validation status
+CREATE TABLE ouro_feedback (...)       -- evolution history + approval state
+CREATE TABLE ouro_logs (...)           -- system logs (partitioned by day)
+
+-- Advisory locks (no table needed)
+pg_try_advisory_lock(hashtext('ouro:meta-agent'))   -- singleton coordinator lock
+
+-- Pub/sub (no table needed)
+LISTEN/NOTIFY on channel 'ouro_notify'
+```
+
+---
+
+## Key Decisions
+
+- **Intelligence**: Claude Code CLI only. `spawnSync('claude', ['--print', '--dangerously-skip-permissions', '-p', prompt])`. No Anthropic SDK, no direct API.
+- **Storage**: Postgres only. pgmq for queues, LISTEN/NOTIFY for events, advisory locks for singletons.
+- **UI**: Vue 3 + TypeScript + Vite + Pinia. No component library. Custom CSS, dark terminal palette.
+- **Gateway**: ChannelAdapter interface — Telegram, Slack, webhook. Not Telegram-only.
+- **Evolution**: PR opens → diff sent to user → `/approve` to merge. User is QA.
+- **Worker**: StorageBackend interface. git + local in v1. S3/GDrive/OneDrive stubbed.
+- **MCP validation**: Spawn claude with temp config, test all endpoints, OPERATIONAL/PARTIAL/FAILED.
+- **Auth**: None v1. Future: OIDC SSO via `OURO_OIDC_ISSUER` (enterprise SSO).
+- **Platform**: Cross-platform. No launchd, no platform-specific process management in core.
+
+---
 
 ## Environment Variables
 
-| Var | Required | Purpose |
-|-----|----------|---------|
-| `REDIS_URL` | yes | Redis connection string |
-| `TELEGRAM_BOT_TOKEN` | no | Gateway Telegram bot |
-| `TELEGRAM_CHAT_ID` | no | Gateway target chat |
-| `CLAUDE_CODE_OAUTH_TOKEN` | yes | For meta-agent self-evolution subprocess |
-| `GITHUB_TOKEN` | no | For git backend worker |
-| `PORT_UI` | no | UI port (default 7702) |
-| `PORT_MCP_FACTORY` | no | MCP factory port (default 7703) |
+```
+DATABASE_URL                     required  postgres://user:pass@host:5432/ouroboros
+CLAUDE_CODE_OAUTH_TOKEN          required  for meta-agent claude subprocesses
+GITHUB_TOKEN                     optional  git backend worker
+TELEGRAM_BOT_TOKEN               optional  gateway Telegram adapter
+TELEGRAM_CHAT_ID                 optional
+SLACK_BOT_TOKEN                  optional  gateway Slack adapter
+SLACK_CHANNEL_ID                 optional
+OURO_WEBHOOK_URL                 optional  generic outbound webhook
+PORT_UI                          optional  default 7702
+PORT_MCP_FACTORY                 optional  default 7703
+OURO_REPO_ROOT                   required  absolute path to ouroboros checkout (for self-evolution)
+```
+
+---
 
 ## Coding Style
 
 - No classes — plain functions and interfaces
-- No ORM — raw Redis commands via ioredis
-- No heavy frameworks in core — it must be importable with zero side effects
-- Error handling: log and continue, never crash the meta-agent loop
-- Every package exports a `start()` function as the entry point
+- No ORM — raw `pg` or `postgres` library queries
+- Error handling: log and continue in loops, never crash meta-agent
+- Every package exports a `start()` function as entry point
+- All claude subprocess calls check for a completion marker in stdout
 - Comments only where logic isn't obvious
-
-## Deployment Model
-
-Each package is an npm package under `@ouroboros/*`. Services run via launchd or Docker. The meta-agent is the only always-on process — everything else is spawned on demand.
-
-## Self-Evolution Loop
-
-```
-user feedback → ouro:feedback queue
-  → meta-agent dequeues
-  → spawns claude subprocess (cwd=repo root)
-  → claude implements change, opens PR, merges
-  → meta-agent notifies via ouro:notify
-  → gateway sends Telegram message
-```
-
-The system improves itself. This is the core of Ouroboros.
+- Cross-platform path handling: always `path.join()`, never string concat
