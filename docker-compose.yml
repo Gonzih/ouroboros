@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ouroboros

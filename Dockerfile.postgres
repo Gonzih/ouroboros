@@ -1,0 +1,14 @@
+FROM pgvector/pgvector:pg16
+
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch main https://github.com/tembo-io/pgmq.git /tmp/pgmq \
+ && cd /tmp/pgmq/pgmq-extension \
+ && VERSION=$(grep "^default_version" pgmq.control | sed "s/.*= '//;s/'//") \
+ && PG_SHAREDIR=$(pg_config --sharedir) \
+ && install -d "$PG_SHAREDIR/extension" \
+ && sed -i '/^module_pathname/d' pgmq.control \
+ && cp pgmq.control "$PG_SHAREDIR/extension/" \
+ && cp sql/pgmq.sql "$PG_SHAREDIR/extension/pgmq--${VERSION}.sql" \
+ && for f in sql/pgmq--*.sql; do cp "$f" "$PG_SHAREDIR/extension/"; done \
+ && rm -rf /tmp/pgmq
