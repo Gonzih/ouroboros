@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ouroboros": {
+      "command": "node",
+      "args": ["packages/mcp-server/dist/index.js"],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}",
+        "OURO_REPO_ROOT": "${OURO_REPO_ROOT}"
+      }
+    }
+  }
+}
