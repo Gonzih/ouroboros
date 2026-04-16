@@ -1,43 +1,30 @@
-# PLAN: packages/ui — Vue 3 Dashboard
+# PLAN: Dev Infra — docker-compose, install scripts, Quick Start README
 
 ## Task Summary
-Implement `packages/ui`: a Vue 3 SPA with an Express + WebSocket backend serving on port 7702.
-5 views (Dashboard, Jobs, Logs, Feedback, MCP Registry). Dark terminal CSS, no component library,
-Pinia state management, live updates via WebSocket bridging Postgres LISTEN/NOTIFY.
+Add/update dev infrastructure for the Ouroboros monorepo: docker-compose.yml with pgvector/pgmq-capable Postgres, .env.example with all vars, macOS/Linux/Windows install scripts that check prereqs + build + register supervisor, and a Quick Start section in README.md.
 
-## Approaches Considered
+## What already exists (discovered by reading)
+- `docker-compose.yml`: uses `postgres:16-alpine`, mounts `scripts/init-db.sql`
+- `.env.example`: complete except missing `OURO_MAX_WORKERS=3`
+- `scripts/install.sh`: service installer only (requires .env already present, no prereq checks, no build step)
+- `scripts/install.ps1`: good Windows installer, same gap (requires .env, no prereq checks, no build step)
+- `README.md`: no Quick Start section
 
-### A) Full SSR with Vue (Nuxt)
-- Pro: SEO, fast first paint
-- Con: Overkill for an internal tool, more complex build
-- Rejected
+## Approach
+Minimal targeted edits — no rewrites. Add the missing pieces to each file:
+1. docker-compose.yml: change image, rename volume
+2. .env.example: add OURO_MAX_WORKERS line
+3. install.sh: add prereq checks at top, change error-on-missing-.env to copy-from-.env.example, add pnpm install/build steps
+4. install.ps1: same additions for Windows
+5. README.md: append Quick Start section before EOF
 
-### B) Separate frontend (Vite dev server) + separate API server
-- Pro: Clean separation, fast HMR
-- Con: Two processes, CORS complexity, harder to deploy
-- Rejected
-
-### C) Single Express server serving Vite-built static bundle + REST API + WebSocket (CHOSEN)
-- Pro: One binary, one port (7702), simple to deploy and evolve
-- Matches spec exactly, simplest production model
-
-## Files to Create/Modify
-- `packages/ui/package.json` — replace stub with full deps
-- `packages/ui/tsconfig.json` — frontend (bundler resolution, DOM lib, noEmit)
-- `packages/ui/tsconfig.server.json` — extends base, Node16 for server
-- `packages/ui/vite.config.ts`
-- `packages/ui/index.html`
-- `packages/ui/server/index.ts` — Express + WS + REST API
-- `packages/ui/src/main.ts` — replace stub
-- `packages/ui/src/App.vue`
-- `packages/ui/src/router/index.ts`
-- `packages/ui/src/composables/useWebSocket.ts`
-- `packages/ui/src/stores/jobs.ts`, `mcp.ts`, `logs.ts`, `feedback.ts`
-- `packages/ui/src/views/Dashboard.vue`, `Jobs.vue`, `Logs.vue`, `Feedback.vue`, `McpRegistry.vue`
-- `packages/ui/src/components/StatusBadge.vue`, `LiveOutput.vue`
+## Files to touch
+- `docker-compose.yml`
+- `.env.example`
+- `scripts/install.sh`
+- `scripts/install.ps1`
+- `README.md`
 
 ## Risks
-- `noUncheckedIndexedAccess`: all `req.params['x']` need `?? ''` fallbacks
-- `exactOptionalPropertyTypes`: no `obj.prop = undefined`
-- Server tsconfig must include ONLY `server/`, not `src/` (Vue SFCs break tsc)
-- Existing `src/index.ts` stub → replaced by `src/main.ts`
+- pgvector/pgvector:pg16 may not ship pgmq — init-db.sql CREATE EXTENSION will fail silently or error; acceptable for dev infra (user is warned in docs)
+- install.sh changes must not break existing service-registration logic
