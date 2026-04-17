@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useSchedulesStore } from '../stores/schedules'
+import { useSchedulesStore, type ScheduleRow } from '../stores/schedules'
 
 const store = useSchedulesStore()
 
@@ -14,6 +14,45 @@ const formError = ref<string | null>(null)
 const formSubmitting = ref(false)
 const togglingId = ref<string | null>(null)
 const deletingId = ref<string | null>(null)
+
+const editingId = ref<string | null>(null)
+const editName = ref('')
+const editCron = ref('')
+const editBackend = ref('git')
+const editTarget = ref('')
+const editInstructions = ref('')
+const editError = ref<string | null>(null)
+const editSubmitting = ref(false)
+
+function openEdit(s: ScheduleRow): void {
+  editingId.value = s.id
+  editName.value = s.name
+  editCron.value = s.cron_expr
+  editBackend.value = s.backend
+  editTarget.value = s.target
+  editInstructions.value = s.instructions
+  editError.value = null
+}
+
+async function submitEdit(): Promise<void> {
+  if (!editingId.value) return
+  editError.value = null
+  editSubmitting.value = true
+  try {
+    await store.updateSchedule(editingId.value, {
+      name: editName.value.trim(),
+      cron_expr: editCron.value.trim(),
+      backend: editBackend.value.trim(),
+      target: editTarget.value.trim(),
+      instructions: editInstructions.value.trim(),
+    })
+    editingId.value = null
+  } catch (err: unknown) {
+    editError.value = String(err)
+  } finally {
+    editSubmitting.value = false
+  }
+}
 
 onMounted(() => { void store.fetchSchedules() })
 
@@ -111,7 +150,8 @@ async function remove(id: string, name: string): Promise<void> {
               {{ togglingId === s.id ? '…' : s.enabled ? 'on' : 'off' }}
             </button>
           </td>
-          <td>
+          <td class="actions-cell">
+            <button @click="openEdit(s)">edit</button>
             <button
               class="danger-btn"
               :disabled="deletingId === s.id"
@@ -123,6 +163,48 @@ async function remove(id: string, name: string): Promise<void> {
         </tr>
       </tbody>
     </table>
+
+    <!-- Edit modal -->
+    <div v-if="editingId" class="modal-overlay" @click.self="editingId = null">
+      <div class="modal card">
+        <div class="section-title">edit schedule</div>
+        <div class="form-field">
+          <label>name</label>
+          <input v-model="editName" class="full-width" />
+        </div>
+        <div class="form-field">
+          <label>cron expression</label>
+          <input v-model="editCron" class="full-width" />
+          <span class="field-hint">minute hour day month weekday</span>
+        </div>
+        <div class="form-field">
+          <label>backend</label>
+          <select v-model="editBackend" class="full-width">
+            <option value="git">git</option>
+            <option value="local">local</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>target</label>
+          <input v-model="editTarget" class="full-width" />
+        </div>
+        <div class="form-field">
+          <label>instructions</label>
+          <textarea v-model="editInstructions" class="full-width" rows="3" />
+        </div>
+        <div v-if="editError" class="error-text">{{ editError }}</div>
+        <div class="modal-actions">
+          <button @click="editingId = null">cancel</button>
+          <button
+            class="primary"
+            :disabled="editSubmitting || !editName.trim() || !editCron.trim() || !editTarget.trim() || !editInstructions.trim()"
+            @click="submitEdit"
+          >
+            {{ editSubmitting ? 'saving...' : 'save' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Create modal -->
     <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
@@ -214,6 +296,11 @@ async function remove(id: string, name: string): Promise<void> {
 
 .toggle-on:hover {
   background: color-mix(in srgb, var(--green) 15%, transparent);
+}
+
+.actions-cell {
+  display: flex;
+  gap: 6px;
 }
 
 .danger-btn {

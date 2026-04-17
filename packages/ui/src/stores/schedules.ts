@@ -66,6 +66,22 @@ export const useSchedulesStore = defineStore('schedules', () => {
     }
   }
 
+  async function updateSchedule(
+    id: string,
+    payload: Partial<Pick<ScheduleRow, 'name' | 'cron_expr' | 'backend' | 'target' | 'instructions'>>,
+  ): Promise<void> {
+    const res = await fetch(`/api/schedules/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string }
+      throw new Error(data.error ?? 'Failed to update schedule')
+    }
+    await fetchSchedules()
+  }
+
   async function deleteSchedule(id: string): Promise<void> {
     const res = await fetch(`/api/schedules/${id}`, { method: 'DELETE' })
     if (!res.ok) {
@@ -75,5 +91,5 @@ export const useSchedulesStore = defineStore('schedules', () => {
     schedules.value = schedules.value.filter(s => s.id !== id)
   }
 
-  return { schedules, loading, error, fetchSchedules, createSchedule, toggleSchedule, deleteSchedule }
+  return { schedules, loading, error, fetchSchedules, createSchedule, updateSchedule, toggleSchedule, deleteSchedule }
 })

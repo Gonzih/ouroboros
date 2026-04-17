@@ -109,6 +109,11 @@
 - [x] meta-agent/coordinator: version string updated to v1.3.0
 - [x] Tests: 4 new startup tests (gateway + UI register/unregister). Total: 241 tests
 
+## v1.4.0 — schedule edit UI ✅ complete
+
+- [x] ui: `updateSchedule(id, payload)` store action — PATCH `/api/schedules/:id` (partial update)
+- [x] ui: `Schedules.vue` — edit button per row opens pre-populated modal; save calls `updateSchedule`
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action
