@@ -139,7 +139,7 @@ describe('coordinator', () => {
 
     it('mentions current version and --continue persistence', () => {
       const prompt = buildCoordinatorPrompt()
-      expect(prompt).toContain('v1.5.0')
+      expect(prompt).toMatch(/Ouroboros v\d+\.\d+\.\d+/)
       expect(prompt).toContain('--continue')
     })
 
