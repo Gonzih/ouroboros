@@ -52,6 +52,12 @@ describe('tickScheduler', () => {
 
     await tickScheduler()
 
+    // Verify the DB INSERT writes the instructions column (regression: was missing before fix)
+    const insertCall = mockDb.mock.calls[1] as unknown[]
+    const insertSql = (insertCall[0] as readonly string[]).join('')
+    expect(insertSql).toMatch(/\binstructions\b/)
+    expect(insertCall[insertCall.length - 1]).toBe('Summarize today')
+
     expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({
       backend: 'git',
       target: 'https://github.com/owner/repo',
