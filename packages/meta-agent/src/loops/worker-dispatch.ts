@@ -146,8 +146,8 @@ export async function startWorkerDispatch(): Promise<void> {
       }
 
       if (!isValidTask(message)) {
-        await log('meta-agent:worker-dispatch', `invalid task shape, nacking: ${JSON.stringify(message)}`)
-        await nack('ouro_tasks', msgId)
+        await log('meta-agent:worker-dispatch', `invalid task shape, discarding: ${JSON.stringify(message).slice(0, 200)}`)
+        await ack('ouro_tasks', msgId)
         return
       }
 

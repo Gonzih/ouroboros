@@ -68,22 +68,24 @@ describe('worker-dispatch', () => {
     expect(mockSpawn).not.toHaveBeenCalled()
   })
 
-  it('nacks a message with an invalid task shape', async () => {
+  it('discards a message with an invalid task shape', async () => {
     mockDequeue.mockResolvedValueOnce({ msgId: 42n, readCt: 1, message: { invalid: true } })
     void startWorkerDispatch()
     await flush()
-    expect(mockNack).toHaveBeenCalledWith('ouro_tasks', 42n)
+    expect(mockAck).toHaveBeenCalledWith('ouro_tasks', 42n)
+    expect(mockNack).not.toHaveBeenCalled()
     expect(mockSpawn).not.toHaveBeenCalled()
   })
 
-  it('nacks a non-object message', async () => {
+  it('discards a non-object message', async () => {
     mockDequeue.mockResolvedValueOnce({ msgId: 7n, readCt: 1, message: 'not-an-object' })
     void startWorkerDispatch()
     await flush()
-    expect(mockNack).toHaveBeenCalledWith('ouro_tasks', 7n)
+    expect(mockAck).toHaveBeenCalledWith('ouro_tasks', 7n)
+    expect(mockNack).not.toHaveBeenCalled()
   })
 
-  it('nacks a message missing required fields', async () => {
+  it('discards a message missing required fields', async () => {
     // id and instructions are present but backend and target are missing
     mockDequeue.mockResolvedValueOnce({
       msgId: 5n,
@@ -92,7 +94,8 @@ describe('worker-dispatch', () => {
     })
     void startWorkerDispatch()
     await flush()
-    expect(mockNack).toHaveBeenCalledWith('ouro_tasks', 5n)
+    expect(mockAck).toHaveBeenCalledWith('ouro_tasks', 5n)
+    expect(mockNack).not.toHaveBeenCalled()
   })
 
   it('spawns a node process for a valid task', async () => {
