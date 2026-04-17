@@ -780,6 +780,48 @@ describe('ChannelAdapter implementations', () => {
       await expect(adapter.stop()).resolves.toBeUndefined()
     })
 
+    it('start() calls registerCommands() when applicationId provided', async () => {
+      const adapter = new DiscordAdapter('token', 'chan', undefined, 'app-123')
+      const spy = vi.spyOn(adapter, 'registerCommands').mockResolvedValue(undefined)
+      await adapter.start()
+      expect(spy).toHaveBeenCalled()
+    })
+
+    it('start() does not call registerCommands() when no applicationId', async () => {
+      const adapter = new DiscordAdapter('token', 'chan')
+      const spy = vi.spyOn(adapter, 'registerCommands').mockResolvedValue(undefined)
+      await adapter.start()
+      expect(spy).not.toHaveBeenCalled()
+    })
+
+    it('start() logs warning if registerCommands() fails', async () => {
+      const adapter = new DiscordAdapter('token', 'chan', undefined, 'app-123')
+      vi.spyOn(adapter, 'registerCommands').mockRejectedValue(new Error('network error'))
+      await adapter.start()
+      expect(mockLog).toHaveBeenCalledWith('gateway:discord', 'command registration failed: Error: network error')
+    })
+
+    it('registerCommands() calls PUT to Discord commands API with correct payload', async () => {
+      const adapter = new DiscordAdapter('token', 'chan', undefined, 'app-456')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const spy = vi.spyOn(adapter as any, 'put').mockResolvedValue(undefined)
+      await adapter.registerCommands()
+      expect(spy).toHaveBeenCalledWith(
+        'https://discord.com/api/v10/applications/app-456/commands',
+        expect.stringContaining('"name":"status"'),
+        expect.objectContaining({ 'Authorization': 'Bot token' }),
+      )
+      expect(mockLog).toHaveBeenCalledWith('gateway:discord', 'registered 8 slash commands')
+    })
+
+    it('registerCommands() is a no-op when no applicationId', async () => {
+      const adapter = new DiscordAdapter('token', 'chan')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const spy = vi.spyOn(adapter as any, 'put').mockResolvedValue(undefined)
+      await adapter.registerCommands()
+      expect(spy).not.toHaveBeenCalled()
+    })
+
     describe('handleInteraction()', () => {
       it('returns null when no public key configured', async () => {
         const adapter = new DiscordAdapter('token', 'chan')

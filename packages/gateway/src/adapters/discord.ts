@@ -10,19 +10,53 @@ export type { ChannelAdapter }
 // Allows constructing a KeyObject from Discord's raw hex public key without external deps.
 const ED25519_SPKI_HEADER = Buffer.from('302a300506032b6570032100', 'hex')
 
+const DISCORD_COMMANDS = [
+  { name: 'status', description: 'Show system status (jobs, active MCPs)' },
+  { name: 'jobs', description: 'List the 5 most recent jobs' },
+  { name: 'mcp', description: 'List registered MCP servers and their status' },
+  { name: 'logs', description: 'Show the 10 most recent log lines' },
+  {
+    name: 'approve',
+    description: 'Approve a pending evolution',
+    options: [{ type: 3, name: 'id', description: 'Evolution ID', required: true }],
+  },
+  {
+    name: 'reject',
+    description: 'Reject a pending evolution',
+    options: [{ type: 3, name: 'id', description: 'Evolution ID', required: true }],
+  },
+  {
+    name: 'feedback',
+    description: 'Submit feedback to the meta-agent',
+    options: [{ type: 3, name: 'text', description: 'Feedback text', required: true }],
+  },
+  {
+    name: 'task',
+    description: 'Queue a new worker task',
+    options: [
+      { type: 3, name: 'instructions', description: 'Task instructions', required: true },
+      { type: 3, name: 'backend', description: 'Storage backend (git, local, s3, gdrive, onedrive)', required: false },
+      { type: 3, name: 'target', description: 'Target path or URL', required: false },
+    ],
+  },
+]
+
 // Posts messages to Discord via the channels API (requires DISCORD_BOT_TOKEN + DISCORD_CHANNEL_ID).
 // When DISCORD_PUBLIC_KEY is provided, also handles inbound Interactions API events:
 // /approve, /reject, /status, /jobs, /mcp slash commands (full parity with Telegram).
+// When DISCORD_APPLICATION_ID is provided, slash commands are auto-registered on startup.
 export class DiscordAdapter implements ChannelAdapter {
   readonly name = 'discord'
   private token: string
   private channelId: string
   private publicKey: string | null
+  private applicationId: string | null
 
-  constructor(token: string, channelId: string, publicKey?: string) {
+  constructor(token: string, channelId: string, publicKey?: string, applicationId?: string) {
     this.token = token
     this.channelId = channelId
     this.publicKey = publicKey ?? null
+    this.applicationId = applicationId ?? null
   }
 
   async send(message: string): Promise<void> {
@@ -40,6 +74,24 @@ export class DiscordAdapter implements ChannelAdapter {
   async start(): Promise<void> {
     const mode = this.publicKey ? 'inbound + outbound' : 'outbound only'
     await log('gateway:discord', `discord adapter started (${mode})`)
+    if (this.applicationId) {
+      await this.registerCommands().catch(async (err: unknown) => {
+        await log('gateway:discord', `command registration failed: ${String(err)}`)
+      })
+    }
+  }
+
+  // Bulk-registers all slash commands with the Discord API.
+  // Requires DISCORD_APPLICATION_ID. Uses PUT to replace the full command list atomically.
+  async registerCommands(): Promise<void> {
+    if (!this.applicationId) return
+    const url = `https://discord.com/api/v10/applications/${this.applicationId}/commands`
+    const body = JSON.stringify(DISCORD_COMMANDS)
+    await this.put(url, body, {
+      'Authorization': `Bot ${this.token}`,
+      'Content-Type': 'application/json',
+    })
+    await log('gateway:discord', `registered ${DISCORD_COMMANDS.length} slash commands`)
   }
 
   async stop(): Promise<void> {
@@ -290,7 +342,7 @@ export class DiscordAdapter implements ChannelAdapter {
     }
   }
 
-  private post(url: string, body: string, headers: Record<string, string>): Promise<void> {
+  private request(method: string, url: string, body: string, headers: Record<string, string>): Promise<void> {
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url)
       const lib: typeof https | typeof http = urlObj.protocol === 'https:' ? https : http
@@ -300,7 +352,7 @@ export class DiscordAdapter implements ChannelAdapter {
           hostname: urlObj.hostname,
           port: urlObj.port !== '' ? urlObj.port : undefined,
           path: urlObj.pathname + urlObj.search,
-          method: 'POST',
+          method,
           headers: {
             ...headers,
             'Content-Length': Buffer.byteLength(body),
@@ -324,5 +376,13 @@ export class DiscordAdapter implements ChannelAdapter {
       req.write(body)
       req.end()
     })
+  }
+
+  private post(url: string, body: string, headers: Record<string, string>): Promise<void> {
+    return this.request('POST', url, body, headers)
+  }
+
+  private put(url: string, body: string, headers: Record<string, string>): Promise<void> {
+    return this.request('PUT', url, body, headers)
   }
 }

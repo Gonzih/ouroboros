@@ -39,7 +39,7 @@ export async function start(): Promise<void> {
   const discordChannelId = process.env['DISCORD_CHANNEL_ID']
   let discordAdapter: DiscordAdapter | undefined
   if (discordToken && discordChannelId) {
-    discordAdapter = new DiscordAdapter(discordToken, discordChannelId, process.env['DISCORD_PUBLIC_KEY'])
+    discordAdapter = new DiscordAdapter(discordToken, discordChannelId, process.env['DISCORD_PUBLIC_KEY'], process.env['DISCORD_APPLICATION_ID'])
     adapters.push(discordAdapter)
   }
 

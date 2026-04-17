@@ -231,6 +231,16 @@
 - [x] gateway/discord: same fix
 - [x] Tests: 6 new publish assertions in adapter success cases
 
+## v2.3.3 — Discord slash command auto-registration ✅ complete
+
+- [x] gateway/discord: `DISCORD_APPLICATION_ID` env var — enables slash command registration on startup
+- [x] gateway/discord: `registerCommands()` public method — calls `PUT /applications/{appId}/commands` with all 8 commands
+- [x] gateway/discord: private `request(method, url, body, headers)` helper — `post` and new `put` delegate to it
+- [x] gateway/index: pass `DISCORD_APPLICATION_ID` as 4th arg to `DiscordAdapter` constructor
+- [x] `.env.example`: document `DISCORD_APPLICATION_ID` with portal link instructions
+- [x] CLAUDE.md: add `DISCORD_APPLICATION_ID` to env vars table
+- [x] Tests: 5 new tests (start calls registerCommands, start skips without appId, failure logged, PUT payload, no-op without appId). gateway: 137 tests. Total: 511
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

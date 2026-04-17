@@ -112,6 +112,7 @@ SLACK_SIGNING_SECRET             optional  enables Slack inbound (/approve, /rej
 DISCORD_BOT_TOKEN                optional  gateway Discord adapter
 DISCORD_CHANNEL_ID               optional
 DISCORD_PUBLIC_KEY               optional  enables Discord inbound (/approve, /reject via Interactions API)
+DISCORD_APPLICATION_ID           optional  enables slash command auto-registration on startup
 OURO_WEBHOOK_URL                 optional  generic outbound webhook
 PORT_GATEWAY                     optional  default 7701
 PORT_UI                          optional  default 7702
