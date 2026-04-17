@@ -43,25 +43,30 @@ describe('watchdog helpers', () => {
   })
 
   describe('session resume logic', () => {
-    it('--continue args used when sessionId is present', () => {
-      // Mirror the worker logic: if sessionId exists, use --continue
+    it('--continue args include --print and -p when sessionId is present', () => {
+      // Mirror the worker logic: if sessionId exists, use --continue --print -p so claude
+      // exits after responding rather than waiting for stdin (which would hang the worker).
       const task: { id: string; backend: string; target: string; instructions: string; sessionId?: string } =
         { id: 'j1', backend: 'local', target: '/tmp', instructions: 'do it', sessionId: 'sess-xyz' }
+      const resumePrompt = 'Continue the task. When done, respond with exactly: TASK_DONE\nIf you cannot complete it, respond with exactly: TASK_FAILED:{reason}'
       const claudeArgs = task.sessionId !== undefined
-        ? ['--continue', '--dangerously-skip-permissions']
+        ? ['--continue', '--print', '--dangerously-skip-permissions', '-p', resumePrompt]
         : ['--print', '--dangerously-skip-permissions', '-p', task.instructions]
-      expect(claudeArgs[0]).toBe('--continue')
-      expect(claudeArgs).not.toContain('-p')
+      expect(claudeArgs).toContain('--continue')
+      expect(claudeArgs).toContain('--print')
+      expect(claudeArgs).toContain('-p')
     })
 
     it('--print args used when sessionId is absent', () => {
       const task: { id: string; backend: string; target: string; instructions: string; sessionId?: string } =
         { id: 'j2', backend: 'local', target: '/tmp', instructions: 'do it' }
+      const resumePrompt = 'Continue the task. When done, respond with exactly: TASK_DONE\nIf you cannot complete it, respond with exactly: TASK_FAILED:{reason}'
       const claudeArgs = task.sessionId !== undefined
-        ? ['--continue', '--dangerously-skip-permissions']
+        ? ['--continue', '--print', '--dangerously-skip-permissions', '-p', resumePrompt]
         : ['--print', '--dangerously-skip-permissions', '-p', task.instructions]
       expect(claudeArgs[0]).toBe('--print')
       expect(claudeArgs).toContain('-p')
+      expect(claudeArgs).not.toContain('--continue')
     })
   })
 
