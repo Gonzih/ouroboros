@@ -1,24 +1,39 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useJobsStore } from '../stores/jobs'
 import StatusBadge from '../components/StatusBadge.vue'
 import LiveOutput from '../components/LiveOutput.vue'
+
+const PAGE_SIZE = 50
 
 const jobsStore = useJobsStore()
 const expandedId = ref<string | null>(null)
 const cancellingId = ref<string | null>(null)
 const retryingId = ref<string | null>(null)
 const statusFilter = ref<string>('all')
+const offset = ref(0)
+const hasMore = ref(false)
 
 const STATUS_FILTERS = ['all', 'pending', 'running', 'completed', 'failed', 'cancelled'] as const
 
-const filteredJobs = computed(() =>
-  statusFilter.value === 'all'
-    ? jobsStore.jobs
-    : jobsStore.jobs.filter(j => j.status === statusFilter.value)
-)
+async function loadJobs(reset = true): Promise<void> {
+  if (reset) offset.value = 0
+  const prevLength = reset ? 0 : jobsStore.jobs.length
+  await jobsStore.fetchJobs({ status: statusFilter.value, limit: PAGE_SIZE, offset: offset.value })
+  hasMore.value = (jobsStore.jobs.length - prevLength) >= PAGE_SIZE
+}
 
-onMounted(() => { void jobsStore.fetchJobs() })
+async function loadMore(): Promise<void> {
+  offset.value += PAGE_SIZE
+  await loadJobs(false)
+}
+
+async function applyFilter(f: string): Promise<void> {
+  statusFilter.value = f
+  await loadJobs(true)
+}
+
+onMounted(() => { void loadJobs() })
 
 function toggle(id: string): void {
   expandedId.value = expandedId.value === id ? null : id
@@ -67,15 +82,15 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
           v-for="f in STATUS_FILTERS"
           :key="f"
           :class="{ active: statusFilter === f }"
-          @click="statusFilter = f"
+          @click="applyFilter(f)"
         >{{ f }}</button>
       </div>
-      <button @click="jobsStore.fetchJobs()">refresh</button>
+      <button @click="loadJobs()">refresh</button>
     </div>
 
-    <div v-if="jobsStore.loading" class="dim-text">loading...</div>
+    <div v-if="jobsStore.loading && offset === 0" class="dim-text">loading...</div>
     <div v-else-if="jobsStore.error" class="error-text">{{ jobsStore.error }}</div>
-    <div v-else-if="filteredJobs.length === 0" class="dim-text">no jobs</div>
+    <div v-else-if="jobsStore.jobs.length === 0" class="dim-text">no jobs</div>
 
     <table v-else>
       <thead>
@@ -90,7 +105,7 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
         </tr>
       </thead>
       <tbody>
-        <template v-for="job in filteredJobs" :key="job.id">
+        <template v-for="job in jobsStore.jobs" :key="job.id">
           <tr class="job-row" @click="toggle(job.id)">
             <td class="mono-id">{{ job.id.slice(0, 8) }}</td>
             <td class="description">{{ job.description.slice(0, 80) }}</td>
@@ -126,6 +141,12 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
         </template>
       </tbody>
     </table>
+
+    <div v-if="hasMore" class="load-more">
+      <button :disabled="jobsStore.loading" @click="loadMore()">
+        {{ jobsStore.loading ? 'loading…' : 'load more' }}
+      </button>
+    </div>
   </div>
 </template>
 
@@ -207,5 +228,10 @@ function elapsed(job: { started_at: string | null; completed_at: string | null; 
 .dim-text {
   color: var(--dim);
   font-size: 12px;
+}
+
+.load-more {
+  margin-top: 10px;
+  text-align: center;
 }
 </style>

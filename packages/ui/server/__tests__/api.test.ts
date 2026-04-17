@@ -91,6 +91,26 @@ describe('UI REST API routes', () => {
       expect(res.body[0].id).toBe('j1')
     })
 
+    it('passes status filter via query param', async () => {
+      mockDb.mockResolvedValueOnce([{ id: 'j2', description: 'Task 2', status: 'running' }])
+      const res = await request(app).get('/api/jobs?status=running')
+      expect(res.status).toBe(200)
+      expect(res.body).toHaveLength(1)
+      expect(res.body[0].status).toBe('running')
+    })
+
+    it('passes limit and offset via query params', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).get('/api/jobs?limit=10&offset=20')
+      expect(res.status).toBe(200)
+    })
+
+    it('clamps limit to 200', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).get('/api/jobs?limit=9999')
+      expect(res.status).toBe(200)
+    })
+
     it('returns 500 when db throws', async () => {
       mockDb.mockRejectedValueOnce(new Error('db error'))
       const res = await request(app).get('/api/jobs')

@@ -54,15 +54,20 @@ apiRouter.get('/health', async (_req, res) => {
   }
 })
 
-apiRouter.get('/jobs', async (_req, res) => {
+apiRouter.get('/jobs', async (req, res) => {
+  const status = typeof req.query['status'] === 'string' ? req.query['status'] : null
+  const limit = Math.min(parseInt(typeof req.query['limit'] === 'string' ? req.query['limit'] : '50', 10) || 50, 200)
+  const offset = parseInt(typeof req.query['offset'] === 'string' ? req.query['offset'] : '0', 10) || 0
   try {
     const db = getDb()
     const rows = await db`
       SELECT id, description, backend, target, status,
              created_at, started_at, completed_at, error
       FROM ouro_jobs
+      WHERE (${status}::text IS NULL OR status = ${status})
       ORDER BY created_at DESC
-      LIMIT 50
+      LIMIT ${limit}
+      OFFSET ${offset}
     `
     res.json(rows)
   } catch (err: unknown) {

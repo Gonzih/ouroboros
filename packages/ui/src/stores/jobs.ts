@@ -25,13 +25,23 @@ export const useJobsStore = defineStore('jobs', () => {
   // jobId → output lines (for expanded view)
   const outputMap = ref<Record<string, OutputLine[]>>({})
 
-  async function fetchJobs(): Promise<void> {
+  async function fetchJobs(opts: { status?: string; limit?: number; offset?: number } = {}): Promise<void> {
     loading.value = true
     error.value = null
     try {
-      const res = await fetch('/api/jobs')
+      const params = new URLSearchParams()
+      if (opts.status && opts.status !== 'all') params.set('status', opts.status)
+      if (opts.limit) params.set('limit', String(opts.limit))
+      if (opts.offset) params.set('offset', String(opts.offset))
+      const qs = params.toString()
+      const res = await fetch(`/api/jobs${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      jobs.value = (await res.json()) as JobRow[]
+      const incoming = (await res.json()) as JobRow[]
+      if (opts.offset && opts.offset > 0) {
+        jobs.value = [...jobs.value, ...incoming]
+      } else {
+        jobs.value = incoming
+      }
     } catch (err: unknown) {
       error.value = String(err)
     } finally {
@@ -93,13 +103,12 @@ export const useJobsStore = defineStore('jobs', () => {
 
   async function retryJob(id: string): Promise<string> {
     const res = await fetch(`/api/jobs/${id}/retry`, { method: 'POST' })
+    const data = (await res.json()) as { id?: string; error?: string }
     if (!res.ok) {
-      const data = (await res.json()) as { error?: string }
       throw new Error(data.error ?? 'Failed to retry job')
     }
-    const data = (await res.json()) as { id: string }
     await fetchJobs()
-    return data.id
+    return data.id!
   }
 
   return { jobs, loading, error, outputMap, fetchJobs, fetchOutput, submitTask, updateJob, appendOutput, cancelJob, retryJob }
