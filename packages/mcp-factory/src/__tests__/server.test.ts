@@ -207,7 +207,7 @@ describe('mcp-factory server', () => {
 
     it('re-validates and returns result on success', async () => {
       mockDbFn.mockResolvedValueOnce([sampleRow]) // SELECT
-      mockParse.mockReturnValueOnce({ scheme: 'pg', host: 'localhost', database: 'db' } as ReturnType<typeof parseConnectionString>)
+      mockParse.mockReturnValueOnce({ scheme: 'pg', path: 'localhost/db', raw: 'pg://localhost/db' })
       mockValidate.mockResolvedValueOnce({ status: 'operational', log: 'All good', toolsFound: ['query'], failedTools: [], durationMs: 0 })
       mockDbFn.mockResolvedValueOnce([]) // UPDATE
       await withServer(async (base) => {
