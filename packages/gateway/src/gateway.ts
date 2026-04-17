@@ -24,13 +24,33 @@ interface JobCompleteEvent {
 interface EvolutionProposedEvent {
   type: 'evolution_proposed'
   id: string
-  diff: string
+  prUrl?: string
+  diff?: string
 }
 
-interface EvolutionResultEvent {
-  type: 'evolution_result'
+interface EvolutionApprovedEvent {
+  type: 'evolution_approved'
   id: string
-  status: string
+}
+
+interface EvolutionAppliedEvent {
+  type: 'evolution_applied'
+  id: string
+  prUrl?: string
+}
+
+interface EvolutionRejectedEvent {
+  type: 'evolution_rejected'
+  id: string
+  prUrl?: string
+  reason?: string
+}
+
+interface EvolutionMergeFailedEvent {
+  type: 'evolution_merge_failed'
+  id: string
+  prUrl?: string
+  error?: string
 }
 
 type OuroNotifyEvent =
@@ -38,7 +58,10 @@ type OuroNotifyEvent =
   | McpRemovedEvent
   | JobCompleteEvent
   | EvolutionProposedEvent
-  | EvolutionResultEvent
+  | EvolutionApprovedEvent
+  | EvolutionAppliedEvent
+  | EvolutionRejectedEvent
+  | EvolutionMergeFailedEvent
 
 function isOuroNotifyEvent(payload: unknown): payload is OuroNotifyEvent {
   if (typeof payload !== 'object' || payload === null) return false
@@ -58,13 +81,29 @@ function formatEvent(event: OuroNotifyEvent): string | null {
       const base = `Job ${event.jobId} ${event.status}.`
       return event.error != null ? `${base} Error: ${event.error}` : base
     }
-    case 'evolution_proposed':
+    case 'evolution_proposed': {
+      const prLine = event.prUrl ? `\nPR: ${event.prUrl}` : ''
       return (
-        `Ouroboros updated itself.\n\nDiff:\n${event.diff}\n\n` +
+        `Evolution proposed for ${event.id}.${prLine}\n\n` +
         `/approve ${event.id} to merge, /reject ${event.id} to discard.`
       )
-    case 'evolution_result':
-      return `Evolution ${event.id} ${event.status}.`
+    }
+    case 'evolution_approved':
+      return `Evolution ${event.id} approved — merging PR.`
+    case 'evolution_applied': {
+      const prLine = event.prUrl ? ` (${event.prUrl})` : ''
+      return `Evolution ${event.id} applied${prLine}. Rebuilding and restarting.`
+    }
+    case 'evolution_rejected': {
+      const reason = event.reason ? `: ${event.reason}` : ''
+      return `Evolution ${event.id} rejected${reason}.`
+    }
+    case 'evolution_merge_failed': {
+      const errLine = event.error ? `: ${event.error}` : ''
+      return `Evolution ${event.id} merge failed${errLine}. Approve again to retry.`
+    }
+    default:
+      return null
   }
 }
 

@@ -139,7 +139,7 @@ describe('processOneFeedback', () => {
     expect(mockDbFn).toHaveBeenCalled()
     expect(mockPublish).toHaveBeenCalledWith(
       'ouro_notify',
-      expect.objectContaining({ type: 'evolution_proposed', feedbackId: 'f6' }),
+      expect.objectContaining({ type: 'evolution_proposed', id: 'f6' }),
     )
     expect(mockLog).toHaveBeenCalledWith(
       'meta-agent:evolution',
@@ -223,7 +223,7 @@ describe('pollForApproval', () => {
     expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 3n)
     expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({
       type: 'evolution_rejected',
-      feedbackId: 'f3',
+      id: 'f3',
     }))
   })
 
@@ -263,7 +263,7 @@ describe('pollForApproval', () => {
     expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 4n)
     expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({
       type: 'evolution_applied',
-      feedbackId: 'f4',
+      id: 'f4',
     }))
     expect(mockReleaseLock).toHaveBeenCalledWith('ouro:meta-agent')
     expect(exitSpy).toHaveBeenCalledWith(0)
@@ -281,7 +281,7 @@ describe('pollForApproval', () => {
     expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 5n)
     expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({
       type: 'evolution_merge_failed',
-      feedbackId: 'f5',
+      id: 'f5',
     }))
     expect(exitSpy).not.toHaveBeenCalled()
   })

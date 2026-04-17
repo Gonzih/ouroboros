@@ -87,7 +87,7 @@ export async function pollForApproval(
           WHERE id = ${feedbackId}
         `
         await ack('ouro_feedback', msgId)
-        await publish('ouro_notify', { type: 'evolution_merge_failed', feedbackId, prUrl, error: String(err) })
+        await publish('ouro_notify', { type: 'evolution_merge_failed', id: feedbackId, prUrl, error: String(err) })
         return
       }
 
@@ -97,12 +97,12 @@ export async function pollForApproval(
         WHERE id = ${feedbackId}
       `
       await ack('ouro_feedback', msgId)
-      await publish('ouro_notify', { type: 'evolution_applied', feedbackId, prUrl })
+      await publish('ouro_notify', { type: 'evolution_applied', id: feedbackId, prUrl })
       await log('meta-agent:evolution', `feedback ${feedbackId} applied (PR merged)`)
 
       // Rebuild with new code — only restart if build succeeds
       await log('meta-agent:evolution', `Evolution ${feedbackId} applied — rebuilding...`)
-      await publish('ouro_notify', { type: 'rebuilding', feedbackId })
+      await publish('ouro_notify', { type: 'rebuilding', id: feedbackId })
 
       const buildResult = spawnSync('pnpm', ['build'], {
         cwd: repoRoot,
@@ -139,7 +139,7 @@ export async function pollForApproval(
         WHERE id = ${feedbackId}
       `
       await ack('ouro_feedback', msgId)
-      await publish('ouro_notify', { type: 'evolution_rejected', feedbackId, prUrl })
+      await publish('ouro_notify', { type: 'evolution_rejected', id: feedbackId, prUrl })
       await log('meta-agent:evolution', `feedback ${feedbackId} rejected (PR closed)`)
       return
     }
@@ -196,7 +196,7 @@ export async function processOneFeedback(): Promise<void> {
 
     await publish('ouro_notify', {
       type: 'evolution_proposed',
-      feedbackId: feedback.id,
+      id: feedback.id,
       prUrl,
       diff: '(see PR)',
     })

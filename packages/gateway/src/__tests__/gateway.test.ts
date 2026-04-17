@@ -135,7 +135,7 @@ describe('Gateway', () => {
       expect(adapter.send).not.toHaveBeenCalled()
     })
 
-    it('formats evolution_result event and broadcasts it', async () => {
+    it('drops unknown event types without broadcasting', async () => {
       const adapter = makeMockAdapter('log')
       const gateway = new Gateway([adapter])
 
@@ -146,12 +146,12 @@ describe('Gateway', () => {
       })
 
       await gateway.start()
-      await capturedCb!({ type: 'evolution_result', id: 'ev-1', status: 'approved' })
+      await capturedCb!({ type: 'unknown_event_type', id: 'ev-1' })
 
-      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('ev-1'))
+      expect(adapter.send).not.toHaveBeenCalled()
     })
 
-    it('formats evolution_proposed event and broadcasts it', async () => {
+    it('formats evolution_proposed with prUrl and broadcasts approve/reject instructions', async () => {
       const adapter = makeMockAdapter('log')
       const gateway = new Gateway([adapter])
 
@@ -162,9 +162,78 @@ describe('Gateway', () => {
       })
 
       await gateway.start()
-      await capturedCb!({ type: 'evolution_proposed', id: 'ev-2', diff: 'diff --git ...' })
+      await capturedCb!({ type: 'evolution_proposed', id: 'ev-2', prUrl: 'https://github.com/acme/ouro/pull/42' })
 
       expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('/approve ev-2'))
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('https://github.com/acme/ouro/pull/42'))
+    })
+
+    it('formats evolution_approved event and broadcasts it', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'evolution_approved', id: 'ev-3' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('ev-3'))
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('approved'))
+    })
+
+    it('formats evolution_applied event with prUrl', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'evolution_applied', id: 'ev-4', prUrl: 'https://github.com/acme/ouro/pull/42' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('ev-4'))
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('applied'))
+    })
+
+    it('formats evolution_rejected event with optional reason', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'evolution_rejected', id: 'ev-5', reason: 'breaks API' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('ev-5'))
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('breaks API'))
+    })
+
+    it('formats evolution_merge_failed event with error', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'evolution_merge_failed', id: 'ev-6', error: 'conflict' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('ev-6'))
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('conflict'))
     })
 
     it('formats mcp_removed event and broadcasts it', async () => {
