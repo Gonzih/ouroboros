@@ -1,3 +1,9 @@
+## v2.3.2 — fix: chat adapter approve/reject now publishes ouro_notify events
+
+- gateway: `TelegramAdapter.handleApprove/handleReject` now publishes `evolution_approved` / `evolution_rejected` to `ouro_notify` after a successful DB update. Previously only the HTTP gateway endpoints (`POST /approve/:id`, `/reject/:id`) and the UI server did this, so approving via Telegram/Slack/Discord chat never triggered cross-channel broadcast of the confirmation.
+- gateway: Same fix applied to `SlackAdapter` and `DiscordAdapter`.
+- Tests: 6 new `mockPublish` assertions added to the approve/reject success cases across all three adapter test suites. gateway: 132 tests. Total: 504.
+
 ## v2.3.0 — OneDrive MCP backend
 
 - mcp-factory: `onedrive://` scheme is now fully implemented. `generateConfig('onedrive', 'onedrive://path')` returns a `@pnp/cli-microsoft365-mcp-server` config with `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, and `MICROSOFT_TENANT_ID` passed through from env (standard Azure AD service principal credentials). Previously `onedrive` threw `StubError`; it now works end-to-end through registration, validation, and Claude tool access.

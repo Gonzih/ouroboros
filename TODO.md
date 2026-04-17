@@ -224,6 +224,13 @@
 - [x] meta-agent/coordinator: bump version string from v2.1.3 → v2.3.0
 - [x] spec/06-mcp-factory.md: add missing onedrive config example to Generated Configs section
 
+## v2.3.2 — fix: chat adapter approve/reject publishes ouro_notify ✅ complete
+
+- [x] gateway/telegram: publish `evolution_approved` / `evolution_rejected` to `ouro_notify` on success
+- [x] gateway/slack: same fix
+- [x] gateway/discord: same fix
+- [x] Tests: 6 new publish assertions in adapter success cases
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

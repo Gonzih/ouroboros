@@ -1,7 +1,7 @@
 import https from 'node:https'
 import http from 'node:http'
 import crypto from 'node:crypto'
-import { getDb, log, enqueue } from '@ouroboros/core'
+import { getDb, log, enqueue, publish } from '@ouroboros/core'
 import type { ChannelAdapter } from './log.js'
 
 export type { ChannelAdapter }
@@ -145,7 +145,9 @@ export class DiscordAdapter implements ChannelAdapter {
       const result = await db`
         UPDATE ouro_feedback SET status = 'approved' WHERE id = ${id} RETURNING id
       `
-      return result.length === 0 ? `No feedback found with id ${id}` : `Evolution ${id} approved.`
+      if (result.length === 0) return `No feedback found with id ${id}`
+      await publish('ouro_notify', { type: 'evolution_approved', id })
+      return `Evolution ${id} approved.`
     } catch (err: unknown) {
       await log('gateway:discord', `approve error: ${String(err)}`)
       return `Error approving ${id}: ${String(err)}`
@@ -158,7 +160,9 @@ export class DiscordAdapter implements ChannelAdapter {
       const result = await db`
         UPDATE ouro_feedback SET status = 'rejected' WHERE id = ${id} RETURNING id
       `
-      return result.length === 0 ? `No feedback found with id ${id}` : `Evolution ${id} rejected.`
+      if (result.length === 0) return `No feedback found with id ${id}`
+      await publish('ouro_notify', { type: 'evolution_rejected', id })
+      return `Evolution ${id} rejected.`
     } catch (err: unknown) {
       await log('gateway:discord', `reject error: ${String(err)}`)
       return `Error rejecting ${id}: ${String(err)}`

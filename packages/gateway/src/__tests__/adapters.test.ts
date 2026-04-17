@@ -8,6 +8,7 @@ vi.mock('@ouroboros/core', () => ({
   getDb: vi.fn(),
   subscribe: vi.fn(),
   enqueue: vi.fn().mockResolvedValue(1n),
+  publish: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('node-telegram-bot-api', () => ({
@@ -18,7 +19,7 @@ vi.mock('node-telegram-bot-api', () => ({
   }))
 }))
 
-import { log, getDb, enqueue } from '@ouroboros/core'
+import { log, getDb, enqueue, publish } from '@ouroboros/core'
 import { LogAdapter } from '../adapters/log.js'
 import { SlackAdapter } from '../adapters/slack.js'
 import { DiscordAdapter } from '../adapters/discord.js'
@@ -29,6 +30,7 @@ import TelegramBot from 'node-telegram-bot-api'
 const mockLog = vi.mocked(log)
 const mockGetDb = vi.mocked(getDb)
 const mockEnqueue = vi.mocked(enqueue)
+const mockPublish = vi.mocked(publish)
 
 // Drain the microtask + macrotask queue so void-async handlers complete.
 const flush = () => new Promise<void>(r => setTimeout(r, 0))
@@ -154,6 +156,7 @@ describe('ChannelAdapter implementations', () => {
 
         expect(result).toEqual({})
         expect(mockDb).toHaveBeenCalled()
+        expect(mockPublish).toHaveBeenCalledWith('ouro_notify', { type: 'evolution_approved', id: 'fb-1' })
         expect(adapter.send).toHaveBeenCalledWith('Evolution fb-1 approved.')
       })
 
@@ -173,6 +176,7 @@ describe('ChannelAdapter implementations', () => {
 
         expect(result).toEqual({})
         expect(mockDb).toHaveBeenCalled()
+        expect(mockPublish).toHaveBeenCalledWith('ouro_notify', { type: 'evolution_rejected', id: 'fb-2' })
         expect(adapter.send).toHaveBeenCalledWith('Evolution fb-2 rejected.')
       })
 
@@ -515,6 +519,7 @@ describe('ChannelAdapter implementations', () => {
       await adapter.start()
       cbs['message']!({ text: '/approve fb-1' })
       await flush()
+      expect(mockPublish).toHaveBeenCalledWith('ouro_notify', { type: 'evolution_approved', id: 'fb-1' })
       expect(sendMessage).toHaveBeenCalledWith('-100', 'Evolution fb-1 approved.')
     })
 
@@ -549,6 +554,7 @@ describe('ChannelAdapter implementations', () => {
       await adapter.start()
       cbs['message']!({ text: '/reject fb-2' })
       await flush()
+      expect(mockPublish).toHaveBeenCalledWith('ouro_notify', { type: 'evolution_rejected', id: 'fb-2' })
       expect(sendMessage).toHaveBeenCalledWith('-100', 'Evolution fb-2 rejected.')
     })
 
@@ -807,6 +813,7 @@ describe('ChannelAdapter implementations', () => {
         const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
         expect(result).toMatchObject({ type: 4, data: { content: 'Evolution fb-1 approved.' } })
         expect(mockDb).toHaveBeenCalled()
+        expect(mockPublish).toHaveBeenCalledWith('ouro_notify', { type: 'evolution_approved', id: 'fb-1' })
       })
 
       it('handles /reject command and returns interaction response', async () => {
@@ -820,6 +827,7 @@ describe('ChannelAdapter implementations', () => {
         const ts = String(Date.now())
         const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
         expect(result).toMatchObject({ type: 4, data: { content: 'Evolution fb-2 rejected.' } })
+        expect(mockPublish).toHaveBeenCalledWith('ouro_notify', { type: 'evolution_rejected', id: 'fb-2' })
       })
 
       it('handles /approve not found', async () => {

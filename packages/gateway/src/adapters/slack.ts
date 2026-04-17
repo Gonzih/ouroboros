@@ -2,7 +2,7 @@ import https from 'node:https'
 import http from 'node:http'
 import crypto from 'node:crypto'
 import { randomUUID } from 'node:crypto'
-import { getDb, log, enqueue } from '@ouroboros/core'
+import { getDb, log, enqueue, publish } from '@ouroboros/core'
 import type { ChannelAdapter } from './log.js'
 
 export type { ChannelAdapter }
@@ -262,6 +262,7 @@ export class SlackAdapter implements ChannelAdapter {
       if (result.length === 0) {
         await this.send(`No feedback found with id ${id}`)
       } else {
+        await publish('ouro_notify', { type: 'evolution_approved', id })
         await this.send(`Evolution ${id} approved.`)
       }
     } catch (err: unknown) {
@@ -279,6 +280,7 @@ export class SlackAdapter implements ChannelAdapter {
       if (result.length === 0) {
         await this.send(`No feedback found with id ${id}`)
       } else {
+        await publish('ouro_notify', { type: 'evolution_rejected', id })
         await this.send(`Evolution ${id} rejected.`)
       }
     } catch (err: unknown) {
