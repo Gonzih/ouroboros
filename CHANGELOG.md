@@ -1,3 +1,10 @@
+## v2.3.8 — fix: advisory lock held on reserved connection
+
+- core/locks: `tryAcquireLock` now acquires via `db.reserve()` and keeps the connection alive for the lock's lifetime. Previously acquired on a pooled connection — if the pool recycled that connection, the advisory lock was silently released, breaking the meta-agent singleton guarantee. Observed live: no advisory lock held in DB despite two meta-agent processes running for hours.
+- core/locks: `releaseLock` unlocks then releases the reserved connection; is a no-op when no lock is held (safe to call from shutdown handlers).
+- Tests: 5 tests rewritten for the reserved-connection pattern. core: 55 tests. Total: 519.
+- chore: bump all package versions to 2.3.8.
+
 ## v2.3.7 — gateway evolution_timeout notification
 
 - gateway: `evolution_timeout` event now handled in `formatEvent` — broadcasts "Evolution {id} timed out after 7 days. PR has been closed." to all adapters. Previously this event was silently dropped, so Telegram/Slack/Discord users received no notification when an evolution PR expired.

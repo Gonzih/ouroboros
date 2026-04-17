@@ -1,6 +1,6 @@
 {
   "name": "@ouroboros/gateway",
-  "version": "2.3.7",
+  "version": "2.3.8",
   "description": "ChannelAdapter: Telegram, Slack, webhook. Notification dispatch.",
   "type": "module",
   "main": "./dist/index.js",

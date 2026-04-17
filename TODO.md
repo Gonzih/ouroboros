@@ -273,7 +273,15 @@
 - [x] Tests: 1 new gateway test. gateway: 138 tests. Total: 518
 - [x] chore: bump all package versions to 2.3.7
 
+## v2.3.8 — fix: advisory lock held on reserved connection ✅ complete
+
+- [x] core/locks: `tryAcquireLock` now acquires via `db.reserve()` — keeps a dedicated non-pooled connection alive for the lock's lifetime. Previously used a pooled connection that could be silently recycled, releasing the lock and allowing two meta-agent instances to both believe they were the singleton.
+- [x] core/locks: `releaseLock` issues `pg_advisory_unlock` on the reserved connection then calls `.release()` to return it; is a no-op if no lock is held.
+- [x] Tests: 5 tests (true-acquires-no-release, false-releases, empty-releases, release-unlocks-and-releases, no-op-when-not-held). core: 55 tests. Total: 519.
+- [x] Live DB: applied pending migrations 005_feedback_msg_id.sql + 006_pruning_indexes.sql (were not auto-applied due to meta-agent starting before those migrations were built into dist).
+
 ## Pending
 
+- [ ] Restart meta-agent to activate the reserved-connection lock fix (currently running old dist)
 - [ ] Push main branch to origin — requires human action
 - [ ] npm publish: run `pnpm -r publish --access public` once org namespace `@ouroboros` is claimed
