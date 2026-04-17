@@ -1,17 +1,13 @@
-import { describe, it, expect, vi } from 'vitest'
-import type { FeedbackEvent } from '@ouroboros/core'
-
-// We test the evolution prompt builder by extracting the logic.
-// The prompt template is internal, but we can verify its output
-// by calling the module and checking the subprocess invocation.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('@ouroboros/core', () => ({
   dequeue: vi.fn(),
-  ack: vi.fn(),
-  nack: vi.fn(),
+  ack: vi.fn().mockResolvedValue(undefined),
+  nack: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn(),
   log: vi.fn().mockResolvedValue(undefined),
   publish: vi.fn().mockResolvedValue(undefined),
+  releaseLock: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('node:child_process', () => ({
@@ -23,79 +19,305 @@ vi.mock('../claude.js', () => ({
 }))
 
 import { spawnSync } from 'node:child_process'
-import { dequeue, nack, log } from '@ouroboros/core'
+import { dequeue, ack, nack, getDb, log, publish, releaseLock } from '@ouroboros/core'
+import { processOneFeedback, pollForApproval } from '../loops/evolution.js'
 
 const mockDequeue = vi.mocked(dequeue)
+const mockAck = vi.mocked(ack)
 const mockNack = vi.mocked(nack)
+const mockGetDb = vi.mocked(getDb)
 const mockLog = vi.mocked(log)
+const mockPublish = vi.mocked(publish)
+const mockReleaseLock = vi.mocked(releaseLock)
 const mockSpawn = vi.mocked(spawnSync)
 
-describe('evolution loop helpers', () => {
-  it('isValidTask accepts well-formed feedback', () => {
-    // Test the shape that evolution.ts expects from the feedback queue
-    const feedback: FeedbackEvent = {
-      id: 'f1',
-      source: 'ui',
-      text: 'Add dark mode support',
-      status: 'pending',
-      createdAt: new Date(),
-    }
-    expect(typeof feedback.id).toBe('string')
-    expect(typeof feedback.text).toBe('string')
-    expect(feedback.id.length).toBeGreaterThan(0)
-    expect(feedback.text.length).toBeGreaterThan(0)
+const okResult = (stdout: string) =>
+  ({ status: 0, stdout, stderr: '', pid: 1, output: [], signal: null, error: undefined }) as ReturnType<typeof spawnSync>
+
+const errResult = (stderr: string) =>
+  ({ status: 1, stdout: '', stderr, pid: 1, output: [], signal: null, error: undefined }) as ReturnType<typeof spawnSync>
+
+describe('processOneFeedback', () => {
+  const savedRoot = process.env['OURO_REPO_ROOT']
+
+  beforeEach(() => { vi.clearAllMocks() })
+
+  afterEach(() => {
+    if (savedRoot === undefined) delete process.env['OURO_REPO_ROOT']
+    else process.env['OURO_REPO_ROOT'] = savedRoot
   })
 
-  it('isValidTask rejects feedback without id', () => {
-    const bad = { source: 'ui', text: 'something' } as Partial<FeedbackEvent>
-    const isValid = Boolean(bad.id && bad.text)
-    expect(isValid).toBe(false)
+  it('logs and returns early when OURO_REPO_ROOT is not set', async () => {
+    delete process.env['OURO_REPO_ROOT']
+    await processOneFeedback()
+    expect(mockLog).toHaveBeenCalledWith('meta-agent:evolution', expect.stringContaining('OURO_REPO_ROOT'))
+    expect(mockDequeue).not.toHaveBeenCalled()
   })
 
-  it('isValidTask rejects feedback without text', () => {
-    const bad = { id: 'x', source: 'ui' } as Partial<FeedbackEvent>
-    const isValid = Boolean(bad.id && bad.text)
-    expect(isValid).toBe(false)
+  it('returns immediately when queue is empty', async () => {
+    process.env['OURO_REPO_ROOT'] = '/repo'
+    mockDequeue.mockResolvedValueOnce(null)
+    await processOneFeedback()
+    expect(mockSpawn).not.toHaveBeenCalled()
   })
 
-  describe('processOneFeedback (via module behavior)', () => {
-    it('skips when OURO_REPO_ROOT is not set', async () => {
-      const savedRoot = process.env['OURO_REPO_ROOT']
-      delete process.env['OURO_REPO_ROOT']
-
-      // Import dynamically to avoid module-level issues
-      const { startEvolution: _ignore } = await import('../loops/evolution.js')
-
-      // When OURO_REPO_ROOT is not set, dequeue should not be called
-      // (the function early-returns after logging)
-      // We verify this by checking mockDequeue was not called
-      // Note: startEvolution runs an infinite loop, so we just verify
-      // the core module's log function is accessible
-      expect(mockLog).toBeDefined()
-
-      if (savedRoot !== undefined) process.env['OURO_REPO_ROOT'] = savedRoot
+  it('nacks feedback with missing id', async () => {
+    process.env['OURO_REPO_ROOT'] = '/repo'
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 1n,
+      message: { source: 'ui', text: 'some text', status: 'pending', createdAt: new Date() } as never,
     })
+    await processOneFeedback()
+    expect(mockNack).toHaveBeenCalledWith('ouro_feedback', 1n)
+    expect(mockSpawn).not.toHaveBeenCalled()
   })
 
-  describe('PR_OPENED marker parsing', () => {
-    it('regex matches PR_OPENED:{url} pattern', () => {
-      const output = 'Working on task...\nPR_OPENED:https://github.com/owner/repo/pull/42'
-      const match = /PR_OPENED:(\S+)/.exec(output)
-      expect(match).not.toBeNull()
-      expect(match![1]).toBe('https://github.com/owner/repo/pull/42')
+  it('nacks feedback with missing text', async () => {
+    process.env['OURO_REPO_ROOT'] = '/repo'
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 2n,
+      message: { id: 'f2', source: 'ui', status: 'pending', createdAt: new Date() } as never,
     })
+    await processOneFeedback()
+    expect(mockNack).toHaveBeenCalledWith('ouro_feedback', 2n)
+  })
 
-    it('regex matches BUILD_FAILED:{error} pattern', () => {
-      const output = 'Attempted build...\nBUILD_FAILED:TypeScript error in src/foo.ts'
-      const match = /BUILD_FAILED:(.+)/.exec(output)
-      expect(match).not.toBeNull()
-      expect(match![1]).toBe('TypeScript error in src/foo.ts')
+  it('nacks when claude subprocess fails', async () => {
+    process.env['OURO_REPO_ROOT'] = '/repo'
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 3n,
+      message: { id: 'f3', text: 'add feature X', source: 'ui', status: 'pending', createdAt: new Date() },
     })
+    mockSpawn.mockReturnValueOnce(errResult('TypeScript error'))
+    await processOneFeedback()
+    expect(mockNack).toHaveBeenCalledWith('ouro_feedback', 3n)
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:evolution',
+      expect.stringContaining('claude subprocess failed'),
+    )
+  })
 
-    it('returns null for output with no marker', () => {
-      const output = 'Just some output without any marker'
-      expect(/PR_OPENED:(\S+)/.exec(output)).toBeNull()
-      expect(/BUILD_FAILED:(.+)/.exec(output)).toBeNull()
+  it('nacks when claude returns BUILD_FAILED marker', async () => {
+    process.env['OURO_REPO_ROOT'] = '/repo'
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 4n,
+      message: { id: 'f4', text: 'add feature Y', source: 'ui', status: 'pending', createdAt: new Date() },
     })
+    mockSpawn.mockReturnValueOnce(okResult('Tried to build...\nBUILD_FAILED:tsc error in foo.ts'))
+    await processOneFeedback()
+    expect(mockNack).toHaveBeenCalledWith('ouro_feedback', 4n)
+    expect(mockLog).toHaveBeenCalledWith('meta-agent:evolution', expect.stringContaining('build failed'))
+  })
+
+  it('nacks when claude returns no marker', async () => {
+    process.env['OURO_REPO_ROOT'] = '/repo'
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 5n,
+      message: { id: 'f5', text: 'add feature Z', source: 'ui', status: 'pending', createdAt: new Date() },
+    })
+    mockSpawn.mockReturnValueOnce(okResult('Did some stuff but forgot the marker'))
+    await processOneFeedback()
+    expect(mockNack).toHaveBeenCalledWith('ouro_feedback', 5n)
+    expect(mockLog).toHaveBeenCalledWith('meta-agent:evolution', expect.stringContaining('no marker found'))
+  })
+
+  it('updates DB and publishes when claude returns PR_OPENED', async () => {
+    process.env['OURO_REPO_ROOT'] = '/repo'
+    const mockDbFn = vi.fn().mockResolvedValue([])
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 6n,
+      message: { id: 'f6', text: 'add dark mode', source: 'ui', status: 'pending', createdAt: new Date() },
+    })
+    mockSpawn.mockReturnValueOnce(
+      okResult('Opening PR...\nPR_OPENED:https://github.com/owner/repo/pull/42'),
+    )
+
+    await processOneFeedback()
+
+    expect(mockDbFn).toHaveBeenCalled()
+    expect(mockPublish).toHaveBeenCalledWith(
+      'ouro_notify',
+      expect.objectContaining({ type: 'evolution_proposed', feedbackId: 'f6' }),
+    )
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:evolution',
+      expect.stringContaining('PR opened for feedback f6'),
+    )
+    // nack should NOT be called — message stays hidden during approval poll
+    expect(mockNack).not.toHaveBeenCalled()
+    expect(mockAck).not.toHaveBeenCalled()
+  })
+
+  it('passes correct args to claude subprocess', async () => {
+    process.env['OURO_REPO_ROOT'] = '/my/repo'
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 7n,
+      message: { id: 'f7', text: 'improve logging', source: 'ui', status: 'pending', createdAt: new Date() },
+    })
+    mockSpawn.mockReturnValueOnce(okResult('BUILD_FAILED:oops'))
+
+    await processOneFeedback()
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'claude',
+      ['--print', '--dangerously-skip-permissions', '-p', expect.stringContaining('improve logging')],
+      expect.objectContaining({ cwd: '/my/repo' }),
+    )
+  })
+})
+
+describe('pollForApproval', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let exitSpy: any
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    exitSpy = vi.spyOn(process, 'exit').mockReturnValue(undefined as never)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    exitSpy.mockRestore()
+  })
+
+  it('acks and logs when feedback row is not found', async () => {
+    const mockDbFn = vi.fn().mockResolvedValue([]) // SELECT returns no row → break
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+    const promise = pollForApproval('f1', 'https://pr/1', 1n, '/repo')
+    await vi.advanceTimersByTimeAsync(10_001)
+    await promise
+
+    expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 1n)
+    expect(mockLog).toHaveBeenCalledWith('meta-agent:evolution', expect.stringContaining('timed out'))
+  })
+
+  it('logs poll error and continues when DB SELECT throws', async () => {
+    const mockDbFn = vi.fn()
+      .mockRejectedValueOnce(new Error('db timeout'))  // first poll throws
+      .mockResolvedValueOnce([])                        // second poll → no row → break
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+    const promise = pollForApproval('f2', 'https://pr/2', 2n, '/repo')
+    await vi.advanceTimersByTimeAsync(10_001) // first poll — DB throws → logs, continues
+    await vi.advanceTimersByTimeAsync(10_001) // second poll — no row → break
+    await promise
+
+    expect(mockLog).toHaveBeenCalledWith('meta-agent:evolution', expect.stringContaining('poll error'))
+    expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 2n)
+  })
+
+  it('rejects PR and acks when status is rejected', async () => {
+    const mockDbFn = vi.fn().mockResolvedValue([{ status: 'rejected' }])
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+    // close PR prompt succeeds
+    mockSpawn.mockReturnValueOnce(okResult('Closed PR'))
+
+    const promise = pollForApproval('f3', 'https://pr/3', 3n, '/repo')
+    await vi.advanceTimersByTimeAsync(10_001)
+    await promise
+
+    expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 3n)
+    expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({
+      type: 'evolution_rejected',
+      feedbackId: 'f3',
+    }))
+  })
+
+  it('logs close PR failure but still acks when rejected and close claude call fails', async () => {
+    const mockDbFn = vi.fn().mockResolvedValue([{ status: 'rejected' }])
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+    // close PR claude call fails
+    mockSpawn.mockReturnValueOnce(errResult('gh auth error'))
+
+    const promise = pollForApproval('f3b', 'https://pr/3b', 30n, '/repo')
+    await vi.advanceTimersByTimeAsync(10_001)
+    await promise
+
+    expect(mockLog).toHaveBeenCalledWith('meta-agent:evolution', expect.stringContaining('close PR failed'))
+    expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 30n)
+  })
+
+  it('merges PR, rebuilds, and exits when approved and build succeeds', async () => {
+    // Throw from process.exit so the infinite poll loop terminates and the promise rejects
+    exitSpy.mockImplementationOnce(() => { throw new Error('process.exit(0)') })
+
+    const mockDbFn = vi.fn().mockResolvedValue([{ status: 'approved' }])
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+    mockSpawn
+      .mockReturnValueOnce(okResult('Merged'))          // gh pr merge
+      .mockReturnValueOnce(okResult('Build succeeded')) // pnpm build
+
+    const promise = pollForApproval('f4', 'https://pr/4', 4n, '/repo')
+    // Pre-register rejection handler to prevent Node from firing unhandled-rejection before we assert
+    promise.catch(() => undefined)
+
+    await vi.advanceTimersByTimeAsync(10_001) // first poll — approved branch runs up to sleep(2000)
+    await vi.advanceTimersByTimeAsync(2_001)  // sleep resolves → process.exit throws
+
+    await expect(promise).rejects.toThrow('process.exit(0)')
+
+    expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 4n)
+    expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({
+      type: 'evolution_applied',
+      feedbackId: 'f4',
+    }))
+    expect(mockReleaseLock).toHaveBeenCalledWith('ouro:meta-agent')
+    expect(exitSpy).toHaveBeenCalledWith(0)
+  })
+
+  it('logs merge_failed and acks when merge claude call fails', async () => {
+    const mockDbFn = vi.fn().mockResolvedValue([{ status: 'approved' }])
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+    mockSpawn.mockReturnValueOnce({ ...okResult(''), status: 1, stderr: 'merge error' } as ReturnType<typeof spawnSync>)
+
+    const promise = pollForApproval('f5', 'https://pr/5', 5n, '/repo')
+    await vi.advanceTimersByTimeAsync(10_001)
+    await promise
+
+    expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 5n)
+    expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({
+      type: 'evolution_merge_failed',
+      feedbackId: 'f5',
+    }))
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not restart when approved but pnpm build fails', async () => {
+    const mockDbFn = vi.fn().mockResolvedValue([{ status: 'approved' }])
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+    mockSpawn
+      .mockReturnValueOnce(okResult('Merged'))                                    // merge ok
+      .mockReturnValueOnce({ ...okResult(''), status: 1, stderr: 'tsc error' } as ReturnType<typeof spawnSync>) // build fails
+
+    const promise = pollForApproval('f6', 'https://pr/6', 6n, '/repo')
+    await vi.advanceTimersByTimeAsync(10_001)
+    await promise
+
+    expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({
+      type: 'rebuild_failed',
+    }))
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('evolution prompt helpers', () => {
+  it('PR_OPENED regex matches URL', () => {
+    const out = 'PR_OPENED:https://github.com/owner/repo/pull/42'
+    expect(/PR_OPENED:(\S+)/.exec(out)?.[1]).toBe('https://github.com/owner/repo/pull/42')
+  })
+
+  it('BUILD_FAILED regex captures error message', () => {
+    const out = 'BUILD_FAILED:src/index.ts(5,3): error TS2345'
+    expect(/BUILD_FAILED:(.+)/.exec(out)?.[1]).toBe('src/index.ts(5,3): error TS2345')
+  })
+
+  it('neither regex matches clean output', () => {
+    const out = 'No special markers here'
+    expect(/PR_OPENED:(\S+)/.exec(out)).toBeNull()
+    expect(/BUILD_FAILED:(.+)/.exec(out)).toBeNull()
   })
 })

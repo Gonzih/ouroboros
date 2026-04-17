@@ -50,7 +50,7 @@ function runClaude(prompt: string, cwd: string): string {
   return result.stdout ?? ''
 }
 
-async function pollForApproval(
+export async function pollForApproval(
   feedbackId: string,
   prUrl: string,
   msgId: bigint,
@@ -150,7 +150,7 @@ async function pollForApproval(
   await ack('ouro_feedback', msgId)
 }
 
-async function processOneFeedback(): Promise<void> {
+export async function processOneFeedback(): Promise<void> {
   const repoRoot = process.env['OURO_REPO_ROOT']
   if (!repoRoot) {
     await log('meta-agent:evolution', 'OURO_REPO_ROOT not set — skipping evolution tick')

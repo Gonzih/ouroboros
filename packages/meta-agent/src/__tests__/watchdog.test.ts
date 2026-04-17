@@ -10,68 +10,42 @@ vi.mock('@ouroboros/core', () => ({
   getStaleJobs: vi.fn().mockResolvedValue([]),
 }))
 
-import { getDb, log, publish, enqueue, unregisterProcess, getStaleJobs } from '@ouroboros/core'
-import { watchdogLoop, makeMetaAgentState } from '../loops/watchdog.js'
+vi.mock('node:child_process', () => ({
+  spawn: vi.fn().mockReturnValue({ pid: 42, on: vi.fn(), stdout: null, stderr: null }),
+}))
+
+import { spawn } from 'node:child_process'
+import { getDb, log, publish, enqueue, unregisterProcess, getStaleJobs, registerProcess } from '@ouroboros/core'
+import { watchdogTick, makeMetaAgentState } from '../loops/watchdog.js'
 import type { MetaAgentState } from '../loops/watchdog.js'
 
+const mockSpawn = vi.mocked(spawn)
 const mockGetDb = vi.mocked(getDb)
 const mockLog = vi.mocked(log)
 const mockPublish = vi.mocked(publish)
 const mockEnqueue = vi.mocked(enqueue)
 const mockUnregisterProcess = vi.mocked(unregisterProcess)
+const mockRegisterProcess = vi.mocked(registerProcess)
 const mockGetStaleJobs = vi.mocked(getStaleJobs)
 
-describe('watchdog helpers', () => {
+describe('watchdogTick', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
-  describe('isPidAlive (via process.kill)', () => {
-    it('current process PID is alive', () => {
-      // process.kill(pid, 0) should not throw for the current PID
-      expect(() => process.kill(process.pid, 0)).not.toThrow()
+  const noOpState: MetaAgentState = { restartService: vi.fn() }
+
+  describe('stale job handling', () => {
+    it('does nothing when no stale jobs exist', async () => {
+      mockGetStaleJobs.mockResolvedValueOnce([])
+      const mockDbFn = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+      await watchdogTick(noOpState)
+
+      expect(mockEnqueue).not.toHaveBeenCalled()
+      expect(mockPublish).not.toHaveBeenCalled()
     })
 
-    it('PID 0 or very high PID is not alive (ESRCH)', () => {
-      // PID 999999999 is very unlikely to exist
-      let threw = false
-      try {
-        process.kill(999999999, 0)
-      } catch {
-        threw = true
-      }
-      expect(threw).toBe(true)
-    })
-  })
-
-  describe('session resume logic', () => {
-    it('--continue args include --print and -p when sessionId is present', () => {
-      // Mirror the worker logic: if sessionId exists, use --continue --print -p so claude
-      // exits after responding rather than waiting for stdin (which would hang the worker).
-      const task: { id: string; backend: string; target: string; instructions: string; sessionId?: string } =
-        { id: 'j1', backend: 'local', target: '/tmp', instructions: 'do it', sessionId: 'sess-xyz' }
-      const resumePrompt = 'Continue the task. When done, respond with exactly: TASK_DONE\nIf you cannot complete it, respond with exactly: TASK_FAILED:{reason}'
-      const claudeArgs = task.sessionId !== undefined
-        ? ['--continue', '--print', '--dangerously-skip-permissions', '-p', resumePrompt]
-        : ['--print', '--dangerously-skip-permissions', '-p', task.instructions]
-      expect(claudeArgs).toContain('--continue')
-      expect(claudeArgs).toContain('--print')
-      expect(claudeArgs).toContain('-p')
-    })
-
-    it('--print args used when sessionId is absent', () => {
-      const task: { id: string; backend: string; target: string; instructions: string; sessionId?: string } =
-        { id: 'j2', backend: 'local', target: '/tmp', instructions: 'do it' }
-      const resumePrompt = 'Continue the task. When done, respond with exactly: TASK_DONE\nIf you cannot complete it, respond with exactly: TASK_FAILED:{reason}'
-      const claudeArgs = task.sessionId !== undefined
-        ? ['--continue', '--print', '--dangerously-skip-permissions', '-p', resumePrompt]
-        : ['--print', '--dangerously-skip-permissions', '-p', task.instructions]
-      expect(claudeArgs[0]).toBe('--print')
-      expect(claudeArgs).toContain('-p')
-      expect(claudeArgs).not.toContain('--continue')
-    })
-  })
-
-  describe('watchdogLoop stale job handling', () => {
-    it('requeues a dead-PID job with sessionId', async () => {
+    it('resets and requeues a job whose PID is dead', async () => {
       const staleJob = {
         id: 'job-dead',
         description: 'some task',
@@ -79,7 +53,38 @@ describe('watchdog helpers', () => {
         target: '/tmp/work',
         status: 'running' as const,
         createdAt: new Date(),
-        pid: 999999999,  // very unlikely to be alive
+        pid: 999999999,
+      }
+      mockGetStaleJobs.mockResolvedValueOnce([staleJob])
+
+      const mockDbFn = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+      await watchdogTick(noOpState)
+
+      expect(mockLog).toHaveBeenCalledWith('watchdog', expect.stringContaining('job-dead'))
+      expect(mockDbFn).toHaveBeenCalled()
+      expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({
+        id: 'job-dead',
+        backend: 'local',
+        target: '/tmp/work',
+      }))
+      expect(mockPublish).toHaveBeenCalledWith('ouro_notify', {
+        type: 'job_requeued',
+        jobId: 'job-dead',
+        reason: 'watchdog_dead_pid',
+      })
+    })
+
+    it('includes sessionId in requeue payload when present', async () => {
+      const staleJob = {
+        id: 'job-sess',
+        description: 'task with session',
+        backend: 'git' as const,
+        target: 'https://github.com/owner/repo',
+        status: 'running' as const,
+        createdAt: new Date(),
+        pid: 999999999,
         sessionId: 'sess-abc',
       }
       mockGetStaleJobs.mockResolvedValueOnce([staleJob])
@@ -87,45 +92,138 @@ describe('watchdog helpers', () => {
       const mockDbFn = vi.fn().mockResolvedValue([])
       mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
 
-      const state: MetaAgentState = {
-        restartService: vi.fn(),
+      await watchdogTick(noOpState)
+
+      expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({
+        id: 'job-sess',
+        sessionId: 'sess-abc',
+      }))
+    })
+
+    it('skips a stale job whose PID is still alive', async () => {
+      const staleJob = {
+        id: 'job-alive',
+        description: 'still running',
+        backend: 'local' as const,
+        target: '/tmp',
+        status: 'running' as const,
+        createdAt: new Date(),
+        pid: process.pid, // current process — definitely alive
       }
+      mockGetStaleJobs.mockResolvedValueOnce([staleJob])
+      const mockDbFn = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
 
-      // Run one iteration of the loop then abort
-      let iteration = 0
-      const origSetTimeout = globalThis.setTimeout
-      vi.spyOn(globalThis, 'setTimeout').mockImplementationOnce((fn, _delay) => {
-        // Immediately invoke the sleep callback to skip the 60s wait
-        iteration++
-        if (iteration <= 1) {
-          void (fn as () => void)()
-        }
-        return 0 as unknown as ReturnType<typeof setTimeout>
-      })
+      await watchdogTick(noOpState)
 
-      // watchdogLoop runs forever — abort after first cycle using AbortController pattern
-      // We test that after the sleep, it processes stale jobs.
-      // Since we can't easily abort the infinite loop in a unit test, we just test
-      // the constituent parts: the logic is correct given mock responses.
+      // job is alive — should not reset or requeue
+      expect(mockEnqueue).not.toHaveBeenCalled()
+      expect(mockPublish).not.toHaveBeenCalled()
+    })
 
-      // Verify mock setup
-      expect(mockGetStaleJobs).toBeDefined()
-      expect(staleJob.pid).toBe(999999999)
+    it('skips a stale job with no PID (undefined)', async () => {
+      const staleJob = {
+        id: 'job-nopid',
+        description: 'no pid set',
+        backend: 'local' as const,
+        target: '/tmp',
+        status: 'running' as const,
+        createdAt: new Date(),
+        pid: undefined,
+        sessionId: undefined,
+      }
+      mockGetStaleJobs.mockResolvedValueOnce([staleJob as never])
+      const mockDbFn = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
 
-      // Simulate the dead-PID branch logic directly
-      const alive = (() => {
-        try { process.kill(999999999, 0); return true } catch { return false }
-      })()
-      expect(alive).toBe(false)
+      await watchdogTick(noOpState)
 
-      vi.restoreAllMocks()
+      // pid undefined → alive=false → should reset/requeue
+      expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({ id: 'job-nopid' }))
+    })
+
+    it('logs error and continues when getStaleJobs throws', async () => {
+      mockGetStaleJobs.mockRejectedValueOnce(new Error('db gone'))
+      const mockDbFn = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+      await watchdogTick(noOpState)
+
+      expect(mockLog).toHaveBeenCalledWith('watchdog', expect.stringContaining('stale job check failed'))
     })
   })
 
-  describe('makeMetaAgentState', () => {
-    it('returns an object with restartService method', () => {
-      const state = makeMetaAgentState()
-      expect(typeof state.restartService).toBe('function')
+  describe('service restart', () => {
+    it('restarts a service whose PID is dead', async () => {
+      const state: MetaAgentState = { restartService: vi.fn() }
+      // getStaleJobs is mocked separately; getDb is only called for the service SELECT
+      const mockDbFn = vi.fn().mockResolvedValueOnce([
+        { name: 'gateway', pid: 999999999, command: 'node', args: ['gateway/dist/index.js'] },
+      ])
+      mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+      await watchdogTick(state)
+
+      expect(mockLog).toHaveBeenCalledWith('watchdog', expect.stringContaining('gateway'))
+      expect(mockUnregisterProcess).toHaveBeenCalledWith('gateway')
+      expect(state.restartService).toHaveBeenCalledWith('gateway', 'node', ['gateway/dist/index.js'])
     })
+
+    it('does not restart a service whose PID is alive', async () => {
+      const state: MetaAgentState = { restartService: vi.fn() }
+      const mockDbFn = vi.fn().mockResolvedValueOnce([
+        { name: 'ui', pid: process.pid, command: 'node', args: ['ui/dist/index.js'] },
+      ])
+      mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+      await watchdogTick(state)
+
+      expect(state.restartService).not.toHaveBeenCalled()
+      expect(mockUnregisterProcess).not.toHaveBeenCalled()
+    })
+
+    it('logs error and continues when service DB query throws', async () => {
+      const mockDbFn = vi.fn().mockRejectedValueOnce(new Error('connection lost'))
+      mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+      await watchdogTick(noOpState)
+
+      expect(mockLog).toHaveBeenCalledWith('watchdog', expect.stringContaining('service check failed'))
+    })
+  })
+})
+
+describe('makeMetaAgentState', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('restartService spawns process with correct args', () => {
+    const state = makeMetaAgentState()
+    state.restartService('ui', 'node', ['dist/index.js'])
+    expect(mockSpawn).toHaveBeenCalledWith('node', ['dist/index.js'], { detached: false })
+  })
+
+  it('restartService registers the new PID', async () => {
+    mockSpawn.mockReturnValueOnce({ pid: 99, on: vi.fn(), stdout: null, stderr: null } as unknown as ReturnType<typeof spawn>)
+    const state = makeMetaAgentState()
+    state.restartService('gateway', 'node', ['gateway/dist/index.js'])
+    // registerProcess is called async — let microtasks drain
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(mockRegisterProcess).toHaveBeenCalledWith('gateway', 99, 'node', ['gateway/dist/index.js'])
+  })
+
+  it('returns an object with restartService method', () => {
+    const state = makeMetaAgentState()
+    expect(typeof state.restartService).toBe('function')
+  })
+})
+
+describe('isPidAlive (via process.kill)', () => {
+  it('current process PID is alive', () => {
+    expect(() => process.kill(process.pid, 0)).not.toThrow()
+  })
+
+  it('very high PID is not alive', () => {
+    expect(() => process.kill(999999999, 0)).toThrow()
   })
 })
