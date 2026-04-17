@@ -14,7 +14,7 @@ Data never leaves the customer's machine. The MCP server runs locally. Claude Co
 | `file:///path` | `file:///data/reports` | `@modelcontextprotocol/server-filesystem` | v1 |
 | `github://owner/repo` | `github://acme/internal-wiki` | `@modelcontextprotocol/server-github` | v1 |
 | `sqlite:///path` | `sqlite:///app.db` | `@modelcontextprotocol/server-sqlite` | v1 |
-| `s3://bucket/prefix` | `s3://corp-data/docs/` | `@modelcontextprotocol/server-aws-kb-retrieval` | stub |
+| `s3://bucket/prefix` | `s3://corp-data/docs/` | `mcp-server-s3` | v1 |
 | `gdrive:///path/to/sa.json` | `gdrive:///etc/sa.json` | `@modelcontextprotocol/server-gdrive` | v1 |
 | `onedrive://path` | `onedrive://Documents/data` | rclone-based | stub |
 | `http://` / `https://` | `https://api.internal/v1` | `@modelcontextprotocol/server-fetch` | v1 |
@@ -141,6 +141,15 @@ interface ValidationResult {
 {
   command: "npx",
   args: ["-y", "@modelcontextprotocol/server-fetch", connectionString]
+}
+
+// s3://bucket/prefix — credentials from env (standard AWS credential chain)
+{
+  command: "npx",
+  args: ["-y", "mcp-server-s3"],
+  env: { AWS_ACCESS_KEY_ID: "...", AWS_SECRET_ACCESS_KEY: "...", AWS_REGION: "..." }
+  // or: env: { AWS_PROFILE: "corp-prod" }
+  // or: no env — falls back to ~/.aws/credentials or IAM role
 }
 
 // gdrive:///path/to/service-account.json

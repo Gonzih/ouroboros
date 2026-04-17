@@ -82,6 +82,55 @@ describe('generateConfig', () => {
     })
   })
 
+  describe('s3 scheme', () => {
+    const savedKeyId = process.env['AWS_ACCESS_KEY_ID']
+    const savedSecret = process.env['AWS_SECRET_ACCESS_KEY']
+    const savedRegion = process.env['AWS_REGION']
+    const savedProfile = process.env['AWS_PROFILE']
+
+    afterEach(() => {
+      if (savedKeyId === undefined) delete process.env['AWS_ACCESS_KEY_ID']
+      else process.env['AWS_ACCESS_KEY_ID'] = savedKeyId
+      if (savedSecret === undefined) delete process.env['AWS_SECRET_ACCESS_KEY']
+      else process.env['AWS_SECRET_ACCESS_KEY'] = savedSecret
+      if (savedRegion === undefined) delete process.env['AWS_REGION']
+      else process.env['AWS_REGION'] = savedRegion
+      if (savedProfile === undefined) delete process.env['AWS_PROFILE']
+      else process.env['AWS_PROFILE'] = savedProfile
+    })
+
+    it('returns mcp-server-s3 config with credentials from env', () => {
+      process.env['AWS_ACCESS_KEY_ID'] = 'AKIAIOSFODNN7EXAMPLE'
+      process.env['AWS_SECRET_ACCESS_KEY'] = 'wJalrXUtnFEMI/K7MDENG'
+      process.env['AWS_REGION'] = 'us-west-2'
+      const config = generateConfig('s3', 's3://my-bucket/data')
+      expect(config.command).toBe('npx')
+      expect(config.args).toContain('mcp-server-s3')
+      expect(config.env?.['AWS_ACCESS_KEY_ID']).toBe('AKIAIOSFODNN7EXAMPLE')
+      expect(config.env?.['AWS_SECRET_ACCESS_KEY']).toBe('wJalrXUtnFEMI/K7MDENG')
+      expect(config.env?.['AWS_REGION']).toBe('us-west-2')
+    })
+
+    it('uses AWS_PROFILE when set instead of key/secret', () => {
+      delete process.env['AWS_ACCESS_KEY_ID']
+      delete process.env['AWS_SECRET_ACCESS_KEY']
+      delete process.env['AWS_REGION']
+      process.env['AWS_PROFILE'] = 'corp-prod'
+      const config = generateConfig('s3', 's3://corp-data/docs')
+      expect(config.env?.['AWS_PROFILE']).toBe('corp-prod')
+      expect(config.env?.['AWS_ACCESS_KEY_ID']).toBeUndefined()
+    })
+
+    it('returns no env when no AWS credentials are set', () => {
+      delete process.env['AWS_ACCESS_KEY_ID']
+      delete process.env['AWS_SECRET_ACCESS_KEY']
+      delete process.env['AWS_REGION']
+      delete process.env['AWS_PROFILE']
+      const config = generateConfig('s3', 's3://bucket/prefix')
+      expect(config.env).toBeUndefined()
+    })
+  })
+
   describe('gdrive scheme', () => {
     it('returns gdrive MCP server config', () => {
       const config = generateConfig('gdrive', 'gdrive:///home/user/sa.json')
@@ -97,7 +146,7 @@ describe('generateConfig', () => {
   })
 
   describe('stub schemes', () => {
-    it.each(['s3', 'onedrive'])('throws StubError for %s', (scheme) => {
+    it.each(['onedrive'])('throws StubError for %s', (scheme) => {
       expect(() => generateConfig(scheme, `${scheme}://example`)).toThrow(StubError)
     })
   })

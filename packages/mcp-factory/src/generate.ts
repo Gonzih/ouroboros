@@ -73,7 +73,25 @@ export function generateConfig(scheme: string, connectionString: string): McpSer
       }
     }
 
-    case 's3':
+    case 's3': {
+      // s3://bucket/prefix — credentials from env (AWS_ACCESS_KEY_ID/SECRET/REGION or AWS_PROFILE)
+      // mcp-server-s3 uses standard AWS credential chain; no bucket arg needed
+      const env: Record<string, string> = {}
+      const keyId = process.env['AWS_ACCESS_KEY_ID']
+      const secret = process.env['AWS_SECRET_ACCESS_KEY']
+      const region = process.env['AWS_REGION']
+      const profile = process.env['AWS_PROFILE']
+      if (keyId !== undefined) env['AWS_ACCESS_KEY_ID'] = keyId
+      if (secret !== undefined) env['AWS_SECRET_ACCESS_KEY'] = secret
+      if (region !== undefined) env['AWS_REGION'] = region
+      if (profile !== undefined) env['AWS_PROFILE'] = profile
+      return {
+        command: 'npx',
+        args: ['-y', 'mcp-server-s3'],
+        ...(Object.keys(env).length > 0 ? { env } : {}),
+      }
+    }
+
     case 'onedrive':
       throw new StubError(scheme)
 

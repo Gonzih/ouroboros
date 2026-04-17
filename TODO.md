@@ -202,6 +202,14 @@
 - [x] gateway: add `/status`, `/jobs`, `/mcp` commands to SlackAdapter — Slack now has full parity with Telegram and Discord (8 commands each)
 - [x] Tests: 3 new Slack command tests. gateway: 132 tests. Total: 499
 
+## v2.2.0 — S3 MCP backend ✅ complete
+
+- [x] mcp-factory: implement `s3` scheme in `generateConfig` — uses `mcp-server-s3` with AWS credential chain passthrough (`AWS_ACCESS_KEY_ID`/`SECRET`/`REGION` or `AWS_PROFILE` from env; falls back to `~/.aws/credentials` and IAM role)
+- [x] mcp-factory: add `s3` validation prompt to `VALIDATION_PROMPTS` in `validate.ts`
+- [x] mcp-factory: 3 new `generateConfig` tests for s3; remove s3 from stub scheme list
+- [x] spec/06-mcp-factory.md: s3 row updated to v1 with correct package (`mcp-server-s3`) and config example
+- [x] spec/07-open-questions.md: S3 moved from stubbed to fully implemented
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action
