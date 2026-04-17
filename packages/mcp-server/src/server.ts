@@ -21,11 +21,11 @@ export async function startServer(): Promise<void> {
     const { name, arguments: args } = request.params
 
     try {
-      if (jobTools.find(t => t.name === name) !== undefined) return handleJobTool(name, args)
-      if (mcpTools.find(t => t.name === name) !== undefined) return handleMcpTool(name, args)
-      if (feedbackTools.find(t => t.name === name) !== undefined) return handleFeedbackTool(name, args)
-      if (logTools.find(t => t.name === name) !== undefined) return handleLogTool(name, args)
-      if (scheduleTools.find(t => t.name === name) !== undefined) return handleScheduleTool(name, args)
+      if (jobTools.find(t => t.name === name) !== undefined) return await handleJobTool(name, args)
+      if (mcpTools.find(t => t.name === name) !== undefined) return await handleMcpTool(name, args)
+      if (feedbackTools.find(t => t.name === name) !== undefined) return await handleFeedbackTool(name, args)
+      if (logTools.find(t => t.name === name) !== undefined) return await handleLogTool(name, args)
+      if (scheduleTools.find(t => t.name === name) !== undefined) return await handleScheduleTool(name, args)
       throw new Error(`Unknown tool: ${name}`)
     } catch (err) {
       return {
