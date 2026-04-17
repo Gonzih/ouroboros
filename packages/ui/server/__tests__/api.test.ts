@@ -372,4 +372,177 @@ describe('UI REST API routes', () => {
       expect(res.status).toBe(404)
     })
   })
+
+  describe('GET /api/feedback', () => {
+    it('returns feedback list from db', async () => {
+      mockDb.mockResolvedValueOnce([
+        { id: 'f1', source: 'ui', text: 'please add dark mode', status: 'pending', pr_url: null, created_at: new Date() },
+      ])
+      const res = await request(app).get('/api/feedback')
+      expect(res.status).toBe(200)
+      expect(res.body[0].id).toBe('f1')
+      expect(res.body[0].text).toBe('please add dark mode')
+    })
+
+    it('returns empty array when no feedback', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).get('/api/feedback')
+      expect(res.status).toBe(200)
+      expect(res.body).toHaveLength(0)
+    })
+
+    it('returns 500 when db throws', async () => {
+      mockDb.mockRejectedValueOnce(new Error('db error'))
+      const res = await request(app).get('/api/feedback')
+      expect(res.status).toBe(500)
+    })
+  })
+
+  describe('GET /api/logs', () => {
+    it('returns log entries from db', async () => {
+      mockDb.mockResolvedValueOnce([
+        { id: 'l1', source: 'meta-agent', message: 'tick', ts: new Date() },
+      ])
+      const res = await request(app).get('/api/logs')
+      expect(res.status).toBe(200)
+      expect(res.body[0].source).toBe('meta-agent')
+      expect(res.body[0].message).toBe('tick')
+    })
+
+    it('returns 500 when db throws', async () => {
+      mockDb.mockRejectedValueOnce(new Error('db error'))
+      const res = await request(app).get('/api/logs')
+      expect(res.status).toBe(500)
+    })
+  })
+
+  describe('GET /api/processes', () => {
+    it('returns process list from db', async () => {
+      mockDb.mockResolvedValueOnce([
+        { name: 'meta-agent', pid: 1234, command: 'node', args: [], started_at: new Date(), last_heartbeat: new Date() },
+      ])
+      const res = await request(app).get('/api/processes')
+      expect(res.status).toBe(200)
+      expect(res.body[0].name).toBe('meta-agent')
+      expect(res.body[0].pid).toBe(1234)
+    })
+
+    it('returns 500 when db throws', async () => {
+      mockDb.mockRejectedValueOnce(new Error('db error'))
+      const res = await request(app).get('/api/processes')
+      expect(res.status).toBe(500)
+    })
+  })
+
+  describe('GET /api/workers', () => {
+    it('returns worker+job join rows from db', async () => {
+      mockDb.mockResolvedValueOnce([
+        {
+          name: 'worker:j1',
+          pid: 5678,
+          started_at: new Date(),
+          last_heartbeat: new Date(),
+          job_id: 'j1',
+          job_description: 'Fix bug',
+          job_status: 'running',
+        },
+      ])
+      const res = await request(app).get('/api/workers')
+      expect(res.status).toBe(200)
+      expect(res.body[0].job_id).toBe('j1')
+      expect(res.body[0].job_status).toBe('running')
+    })
+
+    it('returns 500 when db throws', async () => {
+      mockDb.mockRejectedValueOnce(new Error('db error'))
+      const res = await request(app).get('/api/workers')
+      expect(res.status).toBe(500)
+    })
+  })
+
+  describe('POST /api/mcp/register', () => {
+    const mockFetch = vi.fn()
+
+    beforeEach(() => {
+      vi.stubGlobal('fetch', mockFetch)
+    })
+
+    it('proxies registration to mcp-factory and returns response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({ success: true, config: {} }),
+      })
+      const res = await request(app)
+        .post('/api/mcp/register')
+        .send({ name: 'corp-db', connection_string: 'postgres://user:pass@localhost/db' })
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      expect(mockFetch).toHaveBeenCalledOnce()
+      const [url, opts] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toContain('/mcp/register')
+      expect(opts.method).toBe('POST')
+    })
+
+    it('returns 500 when mcp-factory is unreachable', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('connection refused'))
+      const res = await request(app)
+        .post('/api/mcp/register')
+        .send({ name: 'corp-db', connection_string: 'postgres://user:pass@localhost/db' })
+      expect(res.status).toBe(500)
+    })
+  })
+
+  describe('POST /api/mcp/:name/revalidate', () => {
+    const mockFetch = vi.fn()
+
+    beforeEach(() => {
+      vi.stubGlobal('fetch', mockFetch)
+    })
+
+    it('proxies revalidation to mcp-factory', async () => {
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({ status: 'operational', toolsFound: ['query'] }),
+      })
+      const res = await request(app).post('/api/mcp/corp-db/revalidate')
+      expect(res.status).toBe(200)
+      expect(res.body.status).toBe('operational')
+      const [url, opts] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toContain('/mcp/test/corp-db')
+      expect(opts.method).toBe('POST')
+    })
+
+    it('returns 500 when mcp-factory is unreachable', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('connection refused'))
+      const res = await request(app).post('/api/mcp/corp-db/revalidate')
+      expect(res.status).toBe(500)
+    })
+  })
+
+  describe('DELETE /api/mcp/:name', () => {
+    const mockFetch = vi.fn()
+
+    beforeEach(() => {
+      vi.stubGlobal('fetch', mockFetch)
+    })
+
+    it('proxies deletion to mcp-factory', async () => {
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({ success: true }),
+      })
+      const res = await request(app).delete('/api/mcp/corp-db')
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      const [url, opts] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toContain('/mcp/corp-db')
+      expect(opts.method).toBe('DELETE')
+    })
+
+    it('returns 500 when mcp-factory is unreachable', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('connection refused'))
+      const res = await request(app).delete('/api/mcp/corp-db')
+      expect(res.status).toBe(500)
+    })
+  })
 })
