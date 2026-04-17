@@ -62,7 +62,7 @@ apiRouter.get('/jobs', async (req, res) => {
     const db = getDb()
     const rows = await db`
       SELECT id, description, backend, target, status,
-             created_at, started_at, completed_at, error
+             created_at, started_at, completed_at, error, instructions
       FROM ouro_jobs
       WHERE (${status}::text IS NULL OR status = ${status})
       ORDER BY created_at DESC

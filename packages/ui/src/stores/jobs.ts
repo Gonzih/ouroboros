@@ -11,6 +11,7 @@ export interface JobRow {
   started_at: string | null
   completed_at: string | null
   error: string | null
+  instructions: string | null
 }
 
 export interface OutputLine {
