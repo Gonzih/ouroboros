@@ -1,6 +1,6 @@
 {
   "name": "@ouroboros/mcp-factory",
-  "version": "1.6.0",
+  "version": "1.7.3",
   "description": "Dynamic MCP provisioning + validation. Serves on port 7703.",
   "type": "module",
   "main": "./dist/index.js",

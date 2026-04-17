@@ -1,3 +1,12 @@
+## v1.7.3 — http/https scheme-aware validation + version alignment
+
+- mcp-factory: `http` and `https` scheme validation now passes a fetch-specific prompt to the Claude subprocess — instructs it to use the `fetch` tool and treat any HTTP response (including 4xx) as connectivity success. Previously the generic validation prompt was used, which could cause false FAILED results on endpoints that return 4xx for root paths.
+- mcp-factory: `POST /mcp/test/:name` (re-validation endpoint) now parses the stored connection string scheme and passes it through to `validateMcp`, so re-validation uses the correct scheme-aware prompt rather than falling back to the generic path.
+- spec/06-mcp-factory.md: updated to reflect `@modelcontextprotocol/server-fetch` as the live implementation for http/https (was listed as stub).
+- spec/07-open-questions.md: HTTP/HTTPS moved from stubbed to fully implemented.
+- chore: bump core, mcp-factory, mcp-server, worker, ui from 1.6.0 to 1.7.3 — versions drifted during v1.7.0–v1.7.2 releases.
+- Tests: mcp-factory 49 tests pass (validate.ts: 3 new http/https tests added in this cycle).
+
 ## v1.7.2 — coordinator prompt gap fix
 
 - meta-agent/coordinator: `retry_job` and `submit_feedback` were missing from the coordinator prompt despite being live tools in `@ouroboros/mcp-server`. Coordinator now knows to use `retry_job(jobId)` to requeue failed/cancelled jobs and `submit_feedback(text, source)` to propose its own code improvements.

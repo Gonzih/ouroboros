@@ -141,6 +141,14 @@
 - [x] Tests: assert both tools appear in prompt (coordinator.test.ts)
 - [x] Bump meta-agent version to 1.7.2, update coordinator version string
 
+## v1.7.3 — http/https scheme-aware validation + version alignment ✅ complete
+
+- [x] mcp-factory: fetch-specific validation prompt for http/https schemes (treat any HTTP response as connectivity success)
+- [x] mcp-factory: re-validation endpoint passes scheme through to validateMcp
+- [x] spec/06-mcp-factory.md: http/https marked as v1 (was stub)
+- [x] spec/07-open-questions.md: HTTP/HTTPS moved from stubbed to fully implemented
+- [x] chore: bump core, mcp-factory, mcp-server, worker, ui from 1.6.0 → 1.7.3
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action
