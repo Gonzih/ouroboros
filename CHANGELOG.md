@@ -1,3 +1,13 @@
+## v1.1.0 — real storage backends + worker resume fix + cross-platform cleanup
+
+- worker: `S3Backend`, `GDriveBackend`, and `OneDriveBackend` are now fully implemented (previously stubs). `S3Backend` uses `@aws-sdk/client-s3` with `GetObjectCommand`/`PutObjectCommand`/`DeleteObjectCommand`; requires `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`. `GDriveBackend` uses `googleapis` with service-account credentials (`GDRIVE_CREDENTIALS_JSON`). `OneDriveBackend` uses `@azure/msal-node` + `@microsoft/microsoft-graph-client` with client-credential flow; requires `ONEDRIVE_TENANT_ID`, `ONEDRIVE_CLIENT_ID`, `ONEDRIVE_CLIENT_SECRET`.
+- worker: `cleanup()` in all backends now uses `os.tmpdir()` (via `node:os`) and `fs.rmSync({ recursive: true, force: true })` instead of shell `rm -rf` — fully cross-platform (Windows-safe).
+- meta-agent: worker resume now passes `--print` and `-p` alongside `--continue` — without them the subprocess hung waiting for stdin. Watchdog tests updated to match new spawn signature.
+- meta-agent/coordinator: version string aligned to `1.1.0`; worker-dispatch `TaskInput.sessionId` typed as `string | undefined` (was missing the undefined branch).
+- mcp-factory: test suite migrated from legacy `node:test` format to vitest; config consistency pass on snapshot tests.
+- worker: dead session-ID extraction regex removed (was never matched against actual output); `vite-env.d.ts` triple-slash reference added to ui package so `import.meta.env` types resolve correctly.
+- Tests: 12 new backend tests (S3 upload/download/delete, GDrive upload/download/delete, OneDrive upload/download/delete, cleanup). Total: 209 tests.
+
 ## v1.0.1 — merge_failed recovery + version bump housekeeping
 
 - meta-agent/evolution: `runClaude` now throws on non-zero exit code (was silently treating failures as success); `pollForApproval` marks `merge_failed` status and returns early instead of falling through to `applied` state and triggering a rebuild/restart on a failed merge.

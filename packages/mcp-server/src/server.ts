@@ -11,7 +11,7 @@ const allTools = [...jobTools, ...mcpTools, ...feedbackTools, ...logTools, ...sc
 
 export async function startServer(): Promise<void> {
   const server = new Server(
-    { name: 'ouroboros', version: '1.0.0' },
+    { name: 'ouroboros', version: '1.1.0' },
     { capabilities: { tools: {} } },
   )
 
