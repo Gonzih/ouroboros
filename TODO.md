@@ -166,6 +166,13 @@
 - [x] ui: Dashboard.vue — gdrive and onedrive added to backend dropdown (were missing; worker already supported them)
 - [x] Tests: 7 new tests (approve: success, 409, 404; reject: success, no-reason, 409, 404). ui: 58 tests. Total: 480
 
+## v2.0.0 — live log push via WebSocket ✅ complete
+
+- [x] core: `log()` uses `INSERT RETURNING id, ts` and publishes `ouro_notify { type: 'log_entry', ... }`
+- [x] ui: `useWebSocket` handles `log_entry` in notify dispatch — calls `logsStore.prependLog()` for real-time Logs page updates
+- [x] chore: bump all package versions to 2.0.0 (core, gateway, mcp-factory, mcp-server, meta-agent, worker, ui)
+- [x] Tests: 3 new core/log tests. core: 54 tests. Total: 483
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

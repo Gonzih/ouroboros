@@ -11,6 +11,10 @@ interface NotifyPayload {
   status?: string
   name?: string
   feedbackId?: string
+  id?: number
+  source?: string
+  message?: string
+  ts?: string
 }
 
 interface WsMessage {
@@ -61,6 +65,13 @@ export function useWebSocket(): void {
         const eventType = msg.payload.type
         if (eventType === 'job_output_appended' && msg.payload.jobId && msg.payload.line) {
           jobsStore.appendOutput(msg.payload.jobId, msg.payload.line)
+        } else if (eventType === 'log_entry' && msg.payload.id !== undefined) {
+          logsStore.prependLog({
+            id: msg.payload.id,
+            source: msg.payload.source ?? '',
+            message: msg.payload.message ?? '',
+            ts: msg.payload.ts ?? new Date().toISOString(),
+          })
         } else if (MCP_EVENT_TYPES.has(eventType)) {
           void mcpStore.fetchMcp()
         } else if (FEEDBACK_EVENT_TYPES.has(eventType)) {

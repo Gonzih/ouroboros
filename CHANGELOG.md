@@ -1,3 +1,10 @@
+## v2.0.0 — live log push via WebSocket
+
+- core: `log()` now uses `INSERT ... RETURNING id, ts` and publishes `ouro_notify { type: 'log_entry', id, source, message, ts }` after every write. Log entries are now live-pushed to WebSocket clients instead of relying on the 5-second poll in `Logs.vue`.
+- ui: `useWebSocket` handles `log_entry` events in the `notify` dispatch block — calls `logsStore.prependLog()` with the received entry so the Logs page updates in real time without a round-trip.
+- chore: all package versions bumped to 2.0.0 (core, gateway, mcp-factory, mcp-server, meta-agent, worker, ui).
+- Tests: 3 new core/log tests (publish called with correct payload, no publish when insert returns empty, publish errors swallowed). core: 54 tests. Total: 483.
+
 ## v1.9.0 — approve/reject in UI + complete backend list
 
 - ui: `POST /api/feedback/:id/approve` and `POST /api/feedback/:id/reject` added to the UI server. Approve updates status to `approved` and publishes `evolution_approved`; reject accepts an optional `reason` body, updates status to `rejected`, publishes `evolution_rejected`. Both return 409 if the item is already in a terminal state and 404 if it does not exist. Previously the only way to approve/reject was via Telegram/Slack/Discord chat commands or a direct POST to the gateway server.
