@@ -11,14 +11,14 @@ export async function enqueue(queue: string, message: unknown): Promise<bigint> 
 export async function dequeue<T>(
   queue: string,
   visibilityTimeoutSecs = 60
-): Promise<{ msgId: bigint; message: T } | null> {
+): Promise<{ msgId: bigint; message: T; readCt: number } | null> {
   const db = getDb()
-  const rows = await db<{ msg_id: string; message: unknown }[]>`
-    SELECT msg_id, message FROM pgmq.read(${queue}, ${visibilityTimeoutSecs}, 1)
+  const rows = await db<{ msg_id: string; message: unknown; read_ct: number }[]>`
+    SELECT msg_id, message, read_ct FROM pgmq.read(${queue}, ${visibilityTimeoutSecs}, 1)
   `
   const row = rows[0]
   if (!row) return null
-  return { msgId: BigInt(row.msg_id), message: row.message as T }
+  return { msgId: BigInt(row.msg_id), message: row.message as T, readCt: row.read_ct }
 }
 
 export async function ack(queue: string, msgId: bigint): Promise<void> {

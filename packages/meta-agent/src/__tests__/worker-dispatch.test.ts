@@ -69,7 +69,7 @@ describe('worker-dispatch', () => {
   })
 
   it('nacks a message with an invalid task shape', async () => {
-    mockDequeue.mockResolvedValueOnce({ msgId: 42n, message: { invalid: true } })
+    mockDequeue.mockResolvedValueOnce({ msgId: 42n, readCt: 1, message: { invalid: true } })
     void startWorkerDispatch()
     await flush()
     expect(mockNack).toHaveBeenCalledWith('ouro_tasks', 42n)
@@ -77,7 +77,7 @@ describe('worker-dispatch', () => {
   })
 
   it('nacks a non-object message', async () => {
-    mockDequeue.mockResolvedValueOnce({ msgId: 7n, message: 'not-an-object' })
+    mockDequeue.mockResolvedValueOnce({ msgId: 7n, readCt: 1, message: 'not-an-object' })
     void startWorkerDispatch()
     await flush()
     expect(mockNack).toHaveBeenCalledWith('ouro_tasks', 7n)
@@ -87,6 +87,7 @@ describe('worker-dispatch', () => {
     // id and instructions are present but backend and target are missing
     mockDequeue.mockResolvedValueOnce({
       msgId: 5n,
+      readCt: 1,
       message: { id: 'j1', instructions: 'do stuff' },
     })
     void startWorkerDispatch()
@@ -97,6 +98,7 @@ describe('worker-dispatch', () => {
   it('spawns a node process for a valid task', async () => {
     mockDequeue.mockResolvedValueOnce({
       msgId: 1n,
+      readCt: 1,
       message: { id: 'job-1', backend: 'local', target: '/tmp/work', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -110,7 +112,7 @@ describe('worker-dispatch', () => {
 
   it('passes task as JSON in the OURO_TASK env var', async () => {
     const task = { id: 'job-2', backend: 'git', target: 'https://github.com/x/y', instructions: 'check PRs' }
-    mockDequeue.mockResolvedValueOnce({ msgId: 2n, message: task })
+    mockDequeue.mockResolvedValueOnce({ msgId: 2n, readCt: 1, message: task })
     void startWorkerDispatch()
     await flush(20)
     const spawnCall = mockSpawn.mock.calls[0]!
@@ -143,6 +145,7 @@ describe('worker-dispatch', () => {
     process.env['OURO_REPO_ROOT'] = '/my/repo'
     mockDequeue.mockResolvedValueOnce({
       msgId: 3n,
+      readCt: 1,
       message: { id: 'job-3', backend: 'local', target: '/tmp', instructions: 'go' },
     })
     void startWorkerDispatch()
@@ -160,6 +163,7 @@ describe('worker-dispatch', () => {
     mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
     mockDequeue.mockResolvedValueOnce({
       msgId: 49n,
+      readCt: 1,
       message: { id: 'job-clean-exit', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -181,6 +185,7 @@ describe('worker-dispatch', () => {
     mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
     mockDequeue.mockResolvedValueOnce({
       msgId: 48n,
+      readCt: 1,
       message: { id: 'job-readline', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -209,6 +214,7 @@ describe('worker-dispatch', () => {
     mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
     mockDequeue.mockResolvedValueOnce({
       msgId: 50n,
+      readCt: 1,
       message: { id: 'job-close-fail', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -234,6 +240,7 @@ describe('worker-dispatch', () => {
     mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
     mockDequeue.mockResolvedValueOnce({
       msgId: 51n,
+      readCt: 1,
       message: { id: 'job-spawn-err', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -259,6 +266,7 @@ describe('worker-dispatch', () => {
     mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
     mockDequeue.mockResolvedValueOnce({
       msgId: 52n,
+      readCt: 1,
       message: { id: 'job-to-cancel', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -289,6 +297,7 @@ describe('worker-dispatch', () => {
     mockAck.mockRejectedValueOnce(new Error('ack network error'))
     mockDequeue.mockResolvedValueOnce({
       msgId: 55n,
+      readCt: 1,
       message: { id: 'job-ack-fail', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -313,6 +322,7 @@ describe('worker-dispatch', () => {
     mockNack.mockRejectedValueOnce(new Error('nack network error'))
     mockDequeue.mockResolvedValueOnce({
       msgId: 56n,
+      readCt: 1,
       message: { id: 'job-nack-fail', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -336,6 +346,7 @@ describe('worker-dispatch', () => {
     mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
     mockDequeue.mockResolvedValueOnce({
       msgId: 57n,
+      readCt: 1,
       message: { id: 'job-stderr-err', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -368,6 +379,7 @@ describe('worker-dispatch', () => {
     mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
     mockDequeue.mockResolvedValueOnce({
       msgId: 53n,
+      readCt: 1,
       message: { id: 'job-cancel-dberr', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -390,6 +402,7 @@ describe('worker-dispatch', () => {
     process.env['OURO_MAX_WORKERS'] = '100'
     mockDequeue.mockResolvedValueOnce({
       msgId: 61n,
+      readCt: 1,
       message: { id: 'job-fallback-path', backend: 'local', target: '/tmp', instructions: 'go' },
     })
     void startWorkerDispatch()
@@ -408,6 +421,7 @@ describe('worker-dispatch', () => {
     mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
     mockDequeue.mockResolvedValueOnce({
       msgId: 62n,
+      readCt: 1,
       message: { id: 'job-output-err', backend: 'local', target: '/tmp', instructions: 'run' },
     })
     void startWorkerDispatch()
@@ -424,6 +438,25 @@ describe('worker-dispatch', () => {
 
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('failed to insert output'))
     stderrSpy.mockRestore()
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
+  it('discards and acks a message that has exceeded the retry threshold', async () => {
+    process.env['OURO_MAX_WORKERS'] = '100'
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 99n,
+      readCt: 11,
+      message: { hello: 'world', ts: 12345 },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+    expect(mockAck).toHaveBeenCalledWith('ouro_tasks', 99n)
+    expect(mockNack).not.toHaveBeenCalled()
+    expect(mockSpawn).not.toHaveBeenCalled()
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:worker-dispatch',
+      expect.stringContaining('discarding message 99 after 11 retries'),
+    )
     delete process.env['OURO_MAX_WORKERS']
   })
 })

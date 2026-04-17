@@ -160,7 +160,17 @@ export async function processOneFeedback(): Promise<void> {
   const item = await dequeue<FeedbackEvent>('ouro_feedback', VISIBILITY_TIMEOUT_SECS)
   if (!item) return
 
-  const { msgId, message: feedback } = item
+  const { msgId, message: feedback, readCt } = item
+
+  // Poison-pill protection: discard feedback that has been retried too many times
+  if (readCt > 10) {
+    await log(
+      'meta-agent:evolution',
+      `discarding feedback ${msgId} after ${readCt} retries: ${JSON.stringify(feedback).slice(0, 200)}`,
+    )
+    await ack('ouro_feedback', msgId)
+    return
+  }
 
   if (!feedback.id || !feedback.text) {
     await log('meta-agent:evolution', `invalid feedback shape, nacking: ${JSON.stringify(feedback)}`)

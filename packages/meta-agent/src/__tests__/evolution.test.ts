@@ -61,10 +61,28 @@ describe('processOneFeedback', () => {
     expect(mockSpawn).not.toHaveBeenCalled()
   })
 
+  it('discards and acks feedback that has exceeded the retry threshold', async () => {
+    process.env['OURO_REPO_ROOT'] = '/repo'
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 99n,
+      readCt: 11,
+      message: { id: 'f99', text: 'some feedback', source: 'ui', status: 'pending', createdAt: new Date() },
+    })
+    await processOneFeedback()
+    expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 99n)
+    expect(mockNack).not.toHaveBeenCalled()
+    expect(mockSpawn).not.toHaveBeenCalled()
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:evolution',
+      expect.stringContaining('discarding feedback 99 after 11 retries'),
+    )
+  })
+
   it('nacks feedback with missing id', async () => {
     process.env['OURO_REPO_ROOT'] = '/repo'
     mockDequeue.mockResolvedValueOnce({
       msgId: 1n,
+      readCt: 1,
       message: { source: 'ui', text: 'some text', status: 'pending', createdAt: new Date() } as never,
     })
     await processOneFeedback()
@@ -76,6 +94,7 @@ describe('processOneFeedback', () => {
     process.env['OURO_REPO_ROOT'] = '/repo'
     mockDequeue.mockResolvedValueOnce({
       msgId: 2n,
+      readCt: 1,
       message: { id: 'f2', source: 'ui', status: 'pending', createdAt: new Date() } as never,
     })
     await processOneFeedback()
@@ -86,6 +105,7 @@ describe('processOneFeedback', () => {
     process.env['OURO_REPO_ROOT'] = '/repo'
     mockDequeue.mockResolvedValueOnce({
       msgId: 3n,
+      readCt: 1,
       message: { id: 'f3', text: 'add feature X', source: 'ui', status: 'pending', createdAt: new Date() },
     })
     mockSpawn.mockReturnValueOnce(errResult('TypeScript error'))
@@ -101,6 +121,7 @@ describe('processOneFeedback', () => {
     process.env['OURO_REPO_ROOT'] = '/repo'
     mockDequeue.mockResolvedValueOnce({
       msgId: 4n,
+      readCt: 1,
       message: { id: 'f4', text: 'add feature Y', source: 'ui', status: 'pending', createdAt: new Date() },
     })
     mockSpawn.mockReturnValueOnce(okResult('Tried to build...\nBUILD_FAILED:tsc error in foo.ts'))
@@ -113,6 +134,7 @@ describe('processOneFeedback', () => {
     process.env['OURO_REPO_ROOT'] = '/repo'
     mockDequeue.mockResolvedValueOnce({
       msgId: 5n,
+      readCt: 1,
       message: { id: 'f5', text: 'add feature Z', source: 'ui', status: 'pending', createdAt: new Date() },
     })
     mockSpawn.mockReturnValueOnce(okResult('Did some stuff but forgot the marker'))
@@ -128,6 +150,7 @@ describe('processOneFeedback', () => {
 
     mockDequeue.mockResolvedValueOnce({
       msgId: 6n,
+      readCt: 1,
       message: { id: 'f6', text: 'add dark mode', source: 'ui', status: 'pending', createdAt: new Date() },
     })
     mockSpawn.mockReturnValueOnce(
@@ -154,6 +177,7 @@ describe('processOneFeedback', () => {
     process.env['OURO_REPO_ROOT'] = '/my/repo'
     mockDequeue.mockResolvedValueOnce({
       msgId: 7n,
+      readCt: 1,
       message: { id: 'f7', text: 'improve logging', source: 'ui', status: 'pending', createdAt: new Date() },
     })
     mockSpawn.mockReturnValueOnce(okResult('BUILD_FAILED:oops'))

@@ -133,7 +133,17 @@ export async function startWorkerDispatch(): Promise<void> {
       const item = await dequeue<unknown>('ouro_tasks', 1800) // 30 min visibility
       if (!item) return
 
-      const { msgId, message } = item
+      const { msgId, message, readCt } = item
+
+      // Poison-pill protection: discard messages that have been retried too many times
+      if (readCt > 10) {
+        await log(
+          'meta-agent:worker-dispatch',
+          `discarding message ${msgId} after ${readCt} retries: ${JSON.stringify(message).slice(0, 200)}`,
+        )
+        await ack('ouro_tasks', msgId)
+        return
+      }
 
       if (!isValidTask(message)) {
         await log('meta-agent:worker-dispatch', `invalid task shape, nacking: ${JSON.stringify(message)}`)
