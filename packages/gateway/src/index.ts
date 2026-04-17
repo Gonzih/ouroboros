@@ -59,3 +59,5 @@ export async function start(): Promise<void> {
   // Keep process alive — gateway runs indefinitely via LISTEN/NOTIFY subscription
   await new Promise<never>(() => undefined)
 }
+
+void start()
