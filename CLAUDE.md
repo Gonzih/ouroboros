@@ -104,6 +104,9 @@ TELEGRAM_CHAT_ID                 optional
 SLACK_BOT_TOKEN                  optional  gateway Slack adapter
 SLACK_CHANNEL_ID                 optional
 SLACK_SIGNING_SECRET             optional  enables Slack inbound (/approve, /reject via Events API)
+DISCORD_BOT_TOKEN                optional  gateway Discord adapter
+DISCORD_CHANNEL_ID               optional
+DISCORD_PUBLIC_KEY               optional  enables Discord inbound (/approve, /reject via Interactions API)
 OURO_WEBHOOK_URL                 optional  generic outbound webhook
 PORT_UI                          optional  default 7702
 PORT_MCP_FACTORY                 optional  default 7703
