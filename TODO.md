@@ -135,6 +135,12 @@
 - [x] meta-agent/scheduler: startScheduler tick-error catch handler test
 - [x] meta-agent total: 96 → 105 tests
 
+## v1.7.2 — coordinator prompt gap fix ✅ complete
+
+- [x] meta-agent/coordinator: add `retry_job` and `submit_feedback` to coordinator prompt
+- [x] Tests: assert both tools appear in prompt (coordinator.test.ts)
+- [x] Bump meta-agent version to 1.7.2, update coordinator version string
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

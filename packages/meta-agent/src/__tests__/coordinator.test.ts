@@ -118,6 +118,7 @@ describe('coordinator', () => {
       expect(prompt).toContain('get_job_status')
       expect(prompt).toContain('get_job_output')
       expect(prompt).toContain('cancel_job')
+      expect(prompt).toContain('retry_job')
     })
 
     it('references diagnostic tools', () => {
@@ -129,6 +130,7 @@ describe('coordinator', () => {
       const prompt = buildCoordinatorPrompt()
       expect(prompt).toContain('approve_evolution')
       expect(prompt).toContain('reject_evolution')
+      expect(prompt).toContain('submit_feedback')
     })
 
     it('references MCP awareness tools', () => {

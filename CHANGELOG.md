@@ -1,3 +1,8 @@
+## v1.7.2 — coordinator prompt gap fix
+
+- meta-agent/coordinator: `retry_job` and `submit_feedback` were missing from the coordinator prompt despite being live tools in `@ouroboros/mcp-server`. Coordinator now knows to use `retry_job(jobId)` to requeue failed/cancelled jobs and `submit_feedback(text, source)` to propose its own code improvements.
+- Tests: coordinator prompt tests extended to assert presence of both tools. meta-agent: 110 tests (unchanged count, new assertions added).
+
 ## v1.7.1 — meta-agent test coverage improvements
 
 - meta-agent/coordinator: tests cover stdout/stderr data event handlers — non-empty line logging, empty-line skip, real stderr logging, and "no stdin data received" filter.
