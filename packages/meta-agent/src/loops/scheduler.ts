@@ -32,8 +32,8 @@ export async function tickScheduler(): Promise<void> {
   for (const schedule of due) {
     const jobId = randomUUID()
     await db`
-      INSERT INTO ouro_jobs (id, description, backend, target, status)
-      VALUES (${jobId}, ${schedule.instructions}, ${schedule.backend}, ${schedule.target}, 'pending')
+      INSERT INTO ouro_jobs (id, description, backend, target, status, instructions)
+      VALUES (${jobId}, ${schedule.instructions}, ${schedule.backend}, ${schedule.target}, 'pending', ${schedule.instructions})
     `
     await enqueue('ouro_tasks', {
       id: jobId,
