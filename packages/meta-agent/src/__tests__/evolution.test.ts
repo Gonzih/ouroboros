@@ -329,21 +329,29 @@ describe('pollForApproval', () => {
 })
 
 describe('startEvolution', () => {
+  const savedRoot = process.env['OURO_REPO_ROOT']
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
+    // startEvolution queries DB on startup to resume in-flight approval pollers;
+    // return empty array so no pollers are resumed in these unit tests.
+    mockGetDb.mockReturnValue(vi.fn().mockResolvedValue([]) as unknown as ReturnType<typeof getDb>)
+    process.env['OURO_REPO_ROOT'] = '/test/repo'
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    if (savedRoot === undefined) delete process.env['OURO_REPO_ROOT']
+    else process.env['OURO_REPO_ROOT'] = savedRoot
   })
 
   it('calls processOneFeedback immediately on startup', async () => {
     mockDequeue.mockResolvedValue(null)
 
     void startEvolution()
-    await Promise.resolve()
-    await Promise.resolve()
+    // Drain: DB startup query resolves → run() called → processOneFeedback runs → dequeue called
+    for (let i = 0; i < 10; i++) await Promise.resolve()
 
     expect(mockDequeue).toHaveBeenCalledWith('ouro_feedback', expect.any(Number))
   })
