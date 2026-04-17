@@ -1,3 +1,7 @@
+## v1.1.2 — coordinator mode now runs all execution loops
+
+- meta-agent: coordinator mode (default, non-legacy) was missing `startWorkerDispatch`, `startEvolution`, and `startScheduler` from its `Promise.all`. Jobs created via `spawn_worker` MCP calls were enqueued to `ouro_tasks` but never dequeued — no workers ever ran. Scheduled jobs never triggered. Feedback never got processed into PRs. All three loops are now included alongside `watchdogLoop` and `runCoordinatorLoop`. Legacy mode is unaffected.
+
 ## v1.1.1 — two-phase job cancellation + MCP schema fixes
 
 - mcp-server/jobs: `cancel_job` now differentiates pending vs running jobs — pending jobs are cancelled immediately (`status = 'cancelled'`, `completed_at = NOW()`) without going through the watchdog cycle; running jobs still get `cancellation_requested` so worker-dispatch can send SIGTERM and clean up properly.

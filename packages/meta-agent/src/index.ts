@@ -64,6 +64,10 @@ export async function start(): Promise<void> {
   } else {
     await log('meta-agent', 'Running in coordinator mode (v0.2)')
     await Promise.all([
+      startMcpWatch(),
+      startWorkerDispatch(),
+      startEvolution(),
+      startScheduler(),
       watchdogLoop(state),
       runCoordinatorLoop(),
     ])
