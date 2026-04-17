@@ -240,6 +240,7 @@
 - [x] `.env.example`: document `DISCORD_APPLICATION_ID` with portal link instructions
 - [x] CLAUDE.md: add `DISCORD_APPLICATION_ID` to env vars table
 - [x] Tests: 5 new tests (start calls registerCommands, start skips without appId, failure logged, PUT payload, no-op without appId). gateway: 137 tests. Total: 511
+- [x] chore: bump all package.json + internal version strings to 2.3.3
 
 ## Pending
 
