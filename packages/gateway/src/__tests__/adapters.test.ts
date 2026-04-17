@@ -7,7 +7,7 @@ vi.mock('@ouroboros/core', () => ({
   log: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn(),
   subscribe: vi.fn(),
-  enqueue: vi.fn().mockResolvedValue(undefined),
+  enqueue: vi.fn().mockResolvedValue(1n),
 }))
 
 vi.mock('node-telegram-bot-api', () => ({
@@ -694,7 +694,7 @@ describe('ChannelAdapter implementations', () => {
     })
 
     it('/feedback queues feedback and confirms', async () => {
-      mockEnqueue.mockResolvedValue(undefined)
+      mockEnqueue.mockResolvedValue(1n)
       const { cbs, sendMessage } = makeBot()
       const adapter = new TelegramAdapter('tok', '-100')
       await adapter.start()
