@@ -1,3 +1,11 @@
+## v1.7.1 — meta-agent test coverage improvements
+
+- meta-agent/coordinator: tests cover stdout/stderr data event handlers — non-empty line logging, empty-line skip, real stderr logging, and "no stdin data received" filter.
+- meta-agent/watchdog: test covers EPERM branch of `isPidAlive` (process exists but permission denied → treated as alive, no requeue).
+- meta-agent/worker-dispatch: tests cover stderr readline handler body (stderrLines collection + `[stderr]` prefixed output), ack-failure catch, and nack-failure catch.
+- meta-agent/scheduler: test covers `startScheduler` tick-error catch handler (logs `tick error:` on `tickScheduler` throw).
+- meta-agent total: 96 → 105 tests. `coordinator.ts` reaches 100% statement coverage.
+
 ## v1.7.0 — Discord gateway adapter
 
 - gateway/discord: `DiscordAdapter` added — outbound notifications via Discord channels API (`Bot` token auth); inbound `/approve`, `/reject`, `/status`, `/jobs` slash commands via Discord Interactions API (Ed25519 signature verification using Node.js built-in `crypto`, no external dependencies).

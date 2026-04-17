@@ -282,6 +282,86 @@ describe('worker-dispatch', () => {
     delete process.env['OURO_MAX_WORKERS']
   })
 
+  it('logs ack failure when ack rejects after successful worker exit', async () => {
+    process.env['OURO_MAX_WORKERS'] = '10'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockAck.mockRejectedValueOnce(new Error('ack network error'))
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 55n,
+      message: { id: 'job-ack-fail', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    const closeCb = closeCbCall![1] as (code: number) => void
+    closeCb(0)
+    await flush(20)
+
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:worker-dispatch',
+      expect.stringContaining('ack failed for job job-ack-fail'),
+    )
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
+  it('logs nack failure when nack rejects after failed worker exit', async () => {
+    process.env['OURO_MAX_WORKERS'] = '10'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockNack.mockRejectedValueOnce(new Error('nack network error'))
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 56n,
+      message: { id: 'job-nack-fail', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    const closeCb = closeCbCall![1] as (code: number) => void
+    closeCb(1)
+    await flush(20)
+
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:worker-dispatch',
+      expect.stringContaining('nack failed for job job-nack-fail'),
+    )
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
+  it('uses last collected stderr line as error message on non-zero exit', async () => {
+    process.env['OURO_MAX_WORKERS'] = '10'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 57n,
+      message: { id: 'job-stderr-err', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+
+    // Both rl and rlErr receive the same shared mock object; 'line' is registered twice —
+    // calls[0] = stdout handler, calls[1] = stderr handler.
+    const rlOnMock = (mockCreateInterface.mock.results[0]?.value as { on: ReturnType<typeof vi.fn> }).on
+    const lineCalls = rlOnMock.mock.calls.filter(([e]: [string]) => e === 'line')
+    const stderrLineCb = lineCalls[1]?.[1] as ((line: string) => void) | undefined
+    expect(stderrLineCb).toBeDefined()
+    stderrLineCb!('Fatal error: out of memory')
+    await flush()
+
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    const closeCb = closeCbCall![1] as (code: number) => void
+    closeCb(1)
+    await flush(20)
+
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:worker-dispatch',
+      expect.stringContaining('Fatal error: out of memory'),
+    )
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
   it('logs error when cancellation DB query throws', async () => {
     process.env['OURO_MAX_WORKERS'] = '10'
     const fakeProc = makeFakeProc()

@@ -16,11 +16,12 @@ vi.mock('croner', () => ({
 }))
 
 import { tickScheduler, startScheduler } from '../loops/scheduler.js'
-import { enqueue, publish } from '@ouroboros/core'
+import { enqueue, publish, log } from '@ouroboros/core'
 import { Cron } from 'croner'
 
 const mockEnqueue = vi.mocked(enqueue)
 const mockPublish = vi.mocked(publish)
+const mockLog = vi.mocked(log)
 const mockCron = vi.mocked(Cron)
 
 async function flush(n = 20): Promise<void> {
@@ -151,5 +152,19 @@ describe('startScheduler / initNextRunAt', () => {
 
     expect(mockDb).toHaveBeenCalledTimes(2)
     expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
+  it('logs tick errors via the startScheduler catch handler', async () => {
+    mockDb
+      .mockResolvedValueOnce([])                              // initNextRunAt SELECT returns empty
+      .mockRejectedValueOnce(new Error('tick db crash'))      // tickScheduler SELECT throws
+
+    void startScheduler()
+    await flush()
+
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:scheduler',
+      expect.stringContaining('tick error'),
+    )
   })
 })

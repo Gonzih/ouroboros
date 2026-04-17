@@ -151,6 +151,31 @@ describe('watchdogTick', () => {
 
       expect(mockLog).toHaveBeenCalledWith('watchdog', expect.stringContaining('stale job check failed'))
     })
+
+    it('treats EPERM from process.kill as alive — does not requeue', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementationOnce(() => {
+        const err = Object.assign(new Error('Operation not permitted'), { code: 'EPERM' })
+        throw err
+      })
+
+      const staleJob = {
+        id: 'job-eperm',
+        description: 'eperm test',
+        backend: 'local' as const,
+        target: '/tmp',
+        status: 'running' as const,
+        createdAt: new Date(),
+        pid: 12345,
+      }
+      mockGetStaleJobs.mockResolvedValueOnce([staleJob])
+      const mockDbFn = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+      await watchdogTick(noOpState)
+
+      expect(mockEnqueue).not.toHaveBeenCalled()
+      killSpy.mockRestore()
+    })
   })
 
   describe('service restart', () => {

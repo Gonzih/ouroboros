@@ -127,6 +127,14 @@
 - [x] `.env.example`: Discord vars documented
 - [x] Tests: 14 new tests. gateway: 113 tests total
 
+## v1.7.1 — meta-agent test coverage improvements ✅ complete
+
+- [x] meta-agent/coordinator: 4 tests for stdout/stderr data handlers → coordinator.ts hits 100%
+- [x] meta-agent/watchdog: EPERM branch test (process.kill throws EPERM → treated as alive)
+- [x] meta-agent/worker-dispatch: stderr readline handler body, ack-failure catch, nack-failure catch
+- [x] meta-agent/scheduler: startScheduler tick-error catch handler test
+- [x] meta-agent total: 96 → 105 tests
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

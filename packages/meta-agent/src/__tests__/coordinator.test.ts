@@ -20,12 +20,14 @@ vi.mock('node:child_process', () => ({
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
+import { log } from '@ouroboros/core'
 import { loadSessionId, saveSessionId, buildCoordinatorPrompt, spawnCoordinator } from '../coordinator.js'
 
 const mockExists = vi.mocked(existsSync)
 const mockReadFile = vi.mocked(readFileSync)
 const mockWriteFile = vi.mocked(writeFileSync)
 const mockSpawn = vi.mocked(spawn)
+const mockLog = vi.mocked(log)
 
 function makeFakeProc() {
   return {
@@ -253,6 +255,80 @@ describe('coordinator', () => {
       mockSpawn.mockReturnValueOnce(fakeProc as unknown as ReturnType<typeof spawn>)
       const proc = await spawnCoordinator()
       expect(proc).toBe(fakeProc)
+    })
+
+    it('logs non-empty stdout lines from the coordinator process', async () => {
+      mockExists.mockReturnValue(false)
+      const fakeProc = makeFakeProc()
+      mockSpawn.mockReturnValueOnce(fakeProc as unknown as ReturnType<typeof spawn>)
+      await spawnCoordinator()
+
+      const dataCall = (fakeProc.stdout.on as ReturnType<typeof vi.fn>).mock.calls
+        .find(([e]: [string]) => e === 'data')
+      expect(dataCall).toBeDefined()
+      const dataCb = dataCall![1] as (data: Buffer) => void
+
+      mockLog.mockClear()
+      dataCb(Buffer.from('line one\nline two'))
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(mockLog).toHaveBeenCalledWith('coordinator', 'line one')
+      expect(mockLog).toHaveBeenCalledWith('coordinator', 'line two')
+    })
+
+    it('skips empty and whitespace-only stdout lines', async () => {
+      mockExists.mockReturnValue(false)
+      const fakeProc = makeFakeProc()
+      mockSpawn.mockReturnValueOnce(fakeProc as unknown as ReturnType<typeof spawn>)
+      await spawnCoordinator()
+
+      const dataCall = (fakeProc.stdout.on as ReturnType<typeof vi.fn>).mock.calls
+        .find(([e]: [string]) => e === 'data')
+      const dataCb = dataCall![1] as (data: Buffer) => void
+
+      mockLog.mockClear()
+      dataCb(Buffer.from('\n   \n'))
+      await Promise.resolve()
+
+      expect(mockLog).not.toHaveBeenCalledWith('coordinator', expect.anything())
+    })
+
+    it('logs real stderr output from the coordinator process', async () => {
+      mockExists.mockReturnValue(false)
+      const fakeProc = makeFakeProc()
+      mockSpawn.mockReturnValueOnce(fakeProc as unknown as ReturnType<typeof spawn>)
+      await spawnCoordinator()
+
+      const dataCall = (fakeProc.stderr.on as ReturnType<typeof vi.fn>).mock.calls
+        .find(([e]: [string]) => e === 'data')
+      expect(dataCall).toBeDefined()
+      const dataCb = dataCall![1] as (data: Buffer) => void
+
+      mockLog.mockClear()
+      dataCb(Buffer.from('Error: connection refused'))
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(mockLog).toHaveBeenCalledWith('coordinator:err', 'Error: connection refused')
+    })
+
+    it('filters benign "no stdin data received" warning from stderr', async () => {
+      mockExists.mockReturnValue(false)
+      const fakeProc = makeFakeProc()
+      mockSpawn.mockReturnValueOnce(fakeProc as unknown as ReturnType<typeof spawn>)
+      await spawnCoordinator()
+
+      const dataCall = (fakeProc.stderr.on as ReturnType<typeof vi.fn>).mock.calls
+        .find(([e]: [string]) => e === 'data')
+      const dataCb = dataCall![1] as (data: Buffer) => void
+
+      mockLog.mockClear()
+      dataCb(Buffer.from('warning: no stdin data received'))
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(mockLog).not.toHaveBeenCalledWith('coordinator:err', expect.anything())
     })
   })
 })
