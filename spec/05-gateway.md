@@ -42,17 +42,19 @@ Each adapter is loaded if its required env vars are present. Multiple adapters c
 
 ## Inbound Commands (all adapters that support text input)
 
+All commands are implemented across Telegram, Slack, and Discord.
+
 | Input | Action |
 |-------|--------|
-| `/status` | Active jobs count, meta-agent PID, last log line |
+| `/status` | Job counts (running/pending/completed/failed) + active MCP count |
+| `/jobs` | Last 5 jobs with id, description, and status |
 | `/logs` | Last 10 lines from `ouro_logs` |
-| `/task <backend> <target> <description>` | Push to `ouro_tasks` pgmq queue |
-| `/task <description>` | Push to `ouro_tasks` with default backend=git |
-| `/feedback <text>` | Push to `ouro_feedback` pgmq queue (Ouroboros loop) |
-| `/mcp list` | List registered MCPs |
-| `/approve <feedbackId>` | Approve a pending evolution for merge |
-| `/reject <feedbackId> <reason>` | Reject a pending evolution |
-| Any other text | Treated as free-form feedback → `ouro_feedback` |
+| `/mcp` | List registered MCPs with status and tool names |
+| `/task <backend> <target> <instructions>` | Insert job row + enqueue to `ouro_tasks` |
+| `/task <instructions>` | Same with default `backend=git`, `target=OURO_REPO_ROOT` |
+| `/feedback <text>` | Enqueue to `ouro_feedback` (feeds the meta-agent evolution loop) |
+| `/approve <feedbackId>` | Set feedback status to `approved` |
+| `/reject <feedbackId>` | Set feedback status to `rejected` |
 
 ## Notification Subscription
 
