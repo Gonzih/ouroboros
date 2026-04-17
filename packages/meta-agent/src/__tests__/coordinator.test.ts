@@ -131,9 +131,9 @@ describe('coordinator', () => {
       expect(prompt).toContain('list_mcps')
     })
 
-    it('mentions v0.2 and --continue persistence', () => {
+    it('mentions current version and --continue persistence', () => {
       const prompt = buildCoordinatorPrompt()
-      expect(prompt).toContain('v0.2')
+      expect(prompt).toContain('v1.0.1')
       expect(prompt).toContain('--continue')
     })
 

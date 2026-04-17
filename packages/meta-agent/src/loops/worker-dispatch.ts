@@ -9,6 +9,7 @@ interface TaskInput {
   backend: string
   target: string
   instructions: string
+  sessionId?: string
 }
 
 function isValidTask(v: unknown): v is TaskInput {
