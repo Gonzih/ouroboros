@@ -1,5 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api'
-import { getDb, log } from '@ouroboros/core'
+import { randomUUID } from 'node:crypto'
+import { getDb, log, enqueue } from '@ouroboros/core'
 import type { ChannelAdapter } from './log.js'
 
 // Re-export for consumers that import from this module
@@ -72,6 +73,9 @@ export class TelegramAdapter implements ChannelAdapter {
       await this.handleMcp()
     } else if (trimmed === '/logs') {
       await this.handleLogs()
+    } else if (trimmed.startsWith('/feedback ')) {
+      const text = trimmed.slice('/feedback '.length).trim()
+      if (text) await this.handleFeedback(text)
     }
     // other text: silently ignore — gateway is not a free-form input handler
   }
@@ -159,6 +163,17 @@ export class TelegramAdapter implements ChannelAdapter {
     } catch (err: unknown) {
       await log('gateway:telegram', `jobs error: ${String(err)}`)
       await this.send(`Error fetching jobs: ${String(err)}`)
+    }
+  }
+
+  private async handleFeedback(text: string): Promise<void> {
+    try {
+      const id = randomUUID()
+      await enqueue('ouro_feedback', { id, source: 'telegram', text, status: 'pending' })
+      await this.send('Feedback queued. The meta-agent will process it.')
+    } catch (err: unknown) {
+      await log('gateway:telegram', `feedback error: ${String(err)}`)
+      await this.send(`Error queuing feedback: ${String(err)}`)
     }
   }
 

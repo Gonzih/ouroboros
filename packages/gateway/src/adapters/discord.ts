@@ -1,7 +1,7 @@
 import https from 'node:https'
 import http from 'node:http'
 import crypto from 'node:crypto'
-import { getDb, log } from '@ouroboros/core'
+import { getDb, log, enqueue } from '@ouroboros/core'
 import type { ChannelAdapter } from './log.js'
 
 export type { ChannelAdapter }
@@ -116,6 +116,10 @@ export class DiscordAdapter implements ChannelAdapter {
         const content = await this.handleLogs()
         return { type: 4, data: { content } }
       }
+      if (commandName === 'feedback') {
+        const content = await this.handleFeedback(firstOption)
+        return { type: 4, data: { content } }
+      }
     }
 
     // Unknown interaction type — acknowledge with PONG to avoid Discord timeout errors
@@ -193,6 +197,18 @@ export class DiscordAdapter implements ChannelAdapter {
     } catch (err: unknown) {
       await log('gateway:discord', `jobs error: ${String(err)}`)
       return `Error fetching jobs: ${String(err)}`
+    }
+  }
+
+  private async handleFeedback(text: string): Promise<string> {
+    if (!text) return 'Usage: /feedback <text>'
+    try {
+      const id = crypto.randomUUID()
+      await enqueue('ouro_feedback', { id, source: 'discord', text, status: 'pending' })
+      return 'Feedback queued. The meta-agent will process it.'
+    } catch (err: unknown) {
+      await log('gateway:discord', `feedback error: ${String(err)}`)
+      return `Error queuing feedback: ${String(err)}`
     }
   }
 

@@ -7,6 +7,7 @@ vi.mock('@ouroboros/core', () => ({
   log: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn(),
   subscribe: vi.fn(),
+  enqueue: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('node-telegram-bot-api', () => ({
@@ -17,7 +18,7 @@ vi.mock('node-telegram-bot-api', () => ({
   }))
 }))
 
-import { log, getDb } from '@ouroboros/core'
+import { log, getDb, enqueue } from '@ouroboros/core'
 import { LogAdapter } from '../adapters/log.js'
 import { SlackAdapter } from '../adapters/slack.js'
 import { DiscordAdapter } from '../adapters/discord.js'
@@ -27,6 +28,7 @@ import TelegramBot from 'node-telegram-bot-api'
 
 const mockLog = vi.mocked(log)
 const mockGetDb = vi.mocked(getDb)
+const mockEnqueue = vi.mocked(enqueue)
 
 // Drain the microtask + macrotask queue so void-async handlers complete.
 const flush = () => new Promise<void>(r => setTimeout(r, 0))
@@ -283,6 +285,23 @@ describe('ChannelAdapter implementations', () => {
         const sig = slackSignature(secret, timestamp, body)
         await adapter.handleEvent(body, timestamp, sig)
         expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('worker'))
+      })
+
+      it('handles /feedback command and queues feedback', async () => {
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/feedback add retry logic' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(mockEnqueue).toHaveBeenCalledWith('ouro_feedback', expect.objectContaining({
+          source: 'slack',
+          text: 'add retry logic',
+          status: 'pending',
+        }))
+        expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('Feedback queued'))
       })
 
       it('returns {} when signature buffers have different lengths', async () => {
@@ -606,6 +625,21 @@ describe('ChannelAdapter implementations', () => {
       await flush()
       expect(sendMessage).toHaveBeenCalledWith('-100', 'No logs found.')
     })
+
+    it('/feedback queues feedback and confirms', async () => {
+      mockEnqueue.mockResolvedValue(undefined)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']!({ text: '/feedback improve error handling' })
+      await flush()
+      expect(mockEnqueue).toHaveBeenCalledWith('ouro_feedback', expect.objectContaining({
+        source: 'telegram',
+        text: 'improve error handling',
+        status: 'pending',
+      }))
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Feedback queued'))
+    })
   })
 
   describe('DiscordAdapter', () => {
@@ -746,6 +780,22 @@ describe('ChannelAdapter implementations', () => {
         const ts = String(Date.now())
         const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
         expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('core')
+      })
+
+      it('handles /feedback command and queues feedback', async () => {
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({
+          type: 2,
+          data: { name: 'feedback', options: [{ name: 'text', value: 'improve validation' }] },
+        })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect(mockEnqueue).toHaveBeenCalledWith('ouro_feedback', expect.objectContaining({
+          source: 'discord',
+          text: 'improve validation',
+          status: 'pending',
+        }))
+        expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('Feedback queued')
       })
 
       it('returns PONG for unknown interaction type', async () => {

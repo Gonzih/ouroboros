@@ -1,7 +1,8 @@
 import https from 'node:https'
 import http from 'node:http'
 import crypto from 'node:crypto'
-import { getDb, log } from '@ouroboros/core'
+import { randomUUID } from 'node:crypto'
+import { getDb, log, enqueue } from '@ouroboros/core'
 import type { ChannelAdapter } from './log.js'
 
 export type { ChannelAdapter }
@@ -101,6 +102,20 @@ export class SlackAdapter implements ChannelAdapter {
       if (id) await this.handleReject(id)
     } else if (text === '/logs') {
       await this.handleLogs()
+    } else if (text.startsWith('/feedback ')) {
+      const feedbackText = text.slice('/feedback '.length).trim()
+      if (feedbackText) await this.handleFeedback(feedbackText)
+    }
+  }
+
+  private async handleFeedback(text: string): Promise<void> {
+    try {
+      const id = randomUUID()
+      await enqueue('ouro_feedback', { id, source: 'slack', text, status: 'pending' })
+      await this.send('Feedback queued. The meta-agent will process it.')
+    } catch (err: unknown) {
+      await log('gateway:slack', `feedback error: ${String(err)}`)
+      await this.send(`Error queuing feedback: ${String(err)}`)
     }
   }
 
