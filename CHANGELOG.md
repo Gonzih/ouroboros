@@ -1,3 +1,12 @@
+## v1.1.1 — two-phase job cancellation + MCP schema fixes
+
+- mcp-server/jobs: `cancel_job` now differentiates pending vs running jobs — pending jobs are cancelled immediately (`status = 'cancelled'`, `completed_at = NOW()`) without going through the watchdog cycle; running jobs still get `cancellation_requested` so worker-dispatch can send SIGTERM and clean up properly.
+- mcp-server/jobs: `list_jobs` status filter enum now includes `'cancellation_requested'` (was missing, causing Claude to receive an error when filtering by that status).
+- mcp-server/jobs: `spawn_worker` / `create_job` backend enum now includes `'s3'`, `'gdrive'`, `'onedrive'` — these backends were implemented in v1.1.0 but not added to the MCP tool schema, making them unreachable via Claude.
+- ui: `POST /api/jobs/:id/cancel` mirrors the two-phase logic — pending jobs are cancelled immediately with 200; running jobs still get `cancellation_requested`.
+- meta-agent/coordinator: test expectation aligned to v1.1.0 version string (housekeeping).
+- Tests: 3 net new tests (mcp-server cancel tool: two-phase behaviour; ui cancel endpoint: pending-job path). Total: 224 tests.
+
 ## v1.1.0 — real storage backends + worker resume fix + cross-platform cleanup
 
 - worker: `S3Backend`, `GDriveBackend`, and `OneDriveBackend` are now fully implemented (previously stubs). `S3Backend` uses `@aws-sdk/client-s3` with `GetObjectCommand`/`PutObjectCommand`/`DeleteObjectCommand`; requires `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`. `GDriveBackend` uses `googleapis` with service-account credentials (`GDRIVE_CREDENTIALS_JSON`). `OneDriveBackend` uses `@azure/msal-node` + `@microsoft/microsoft-graph-client` with client-credential flow; requires `ONEDRIVE_TENANT_ID`, `ONEDRIVE_CLIENT_ID`, `ONEDRIVE_CLIENT_SECRET`.
@@ -6,7 +15,7 @@
 - meta-agent/coordinator: version string aligned to `1.1.0`; worker-dispatch `TaskInput.sessionId` typed as `string | undefined` (was missing the undefined branch).
 - mcp-factory: test suite migrated from legacy `node:test` format to vitest; config consistency pass on snapshot tests.
 - worker: dead session-ID extraction regex removed (was never matched against actual output); `vite-env.d.ts` triple-slash reference added to ui package so `import.meta.env` types resolve correctly.
-- Tests: 12 new backend tests (S3 upload/download/delete, GDrive upload/download/delete, OneDrive upload/download/delete, cleanup). Total: 209 tests.
+- Tests: 12 new backend tests (S3 upload/download/delete, GDrive upload/download/delete, OneDrive upload/download/delete, cleanup). Total: 221 tests.
 
 ## v1.0.1 — merge_failed recovery + version bump housekeeping
 
