@@ -282,6 +282,6 @@
 
 ## Pending
 
-- [ ] Restart meta-agent to activate the reserved-connection lock fix (currently running old dist)
+- [x] Restart meta-agent to activate the reserved-connection lock fix — PID 80183 running new dist (2026-04-17)
 - [ ] Push main branch to origin — requires human action
 - [ ] npm publish: run `pnpm -r publish --access public` once org namespace `@ouroboros` is claimed
