@@ -1,3 +1,18 @@
+## v1.5.0 — Slack inbound: /approve and /reject via Events API
+
+- gateway/slack: `SlackAdapter.handleEvent()` added — verifies HMAC-SHA256 Slack signatures, guards against replay attacks (5-minute window), handles the URL verification challenge, and routes `/approve <id>` and `/reject <id>` message events to the same DB updates used by Telegram and the HTTP REST endpoints. Slack inbound is now at full parity with Telegram.
+- gateway/http: `POST /slack/events` mounted before `express.json()` so the raw body is available for signature verification. Enabled by setting `SLACK_SIGNING_SECRET` alongside existing `SLACK_BOT_TOKEN` and `SLACK_CHANNEL_ID`.
+- gateway/slack: bot messages and subtypes are filtered — only direct human message events trigger command handling.
+- coordinator: benign "no stdin data received" warning from Claude subprocess filtered from stderr logs to reduce noise.
+- Tests: 12 new gateway tests covering HMAC verification, replay rejection, URL challenge, approve/reject DB writes, bot-message filtering, and the HTTP route end-to-end. Total: 48 gateway tests.
+- Tests: 18 new meta-agent tests — mcp-watch (10: subscribe setup, event guard, log/publish on valid events, unknown-payload guard) + worker-dispatch (8: queue polling, nack on invalid fields, spawn for valid tasks, OURO_TASK env encoding, OURO_REPO_ROOT resolution). meta-agent: 63 tests.
+- Tests: 27 new core/mcp-factory tests — core/events (11: publish/subscribe, callback error swallowing, reconnect watchdog, unsubscribe idempotency), core/log (4: stdout write + DB insert, swallows DB errors), mcp-factory/server (12: all four HTTP endpoints). Total: 298 tests across all packages.
+
+## v1.4.0 — Schedule edit UI
+
+- ui: `updateSchedule(id, payload)` store action added to `schedulesStore` — calls `PATCH /api/schedules/:id` with a partial-update payload (any subset of name, cron_expr, backend, target, instructions).
+- ui: `Schedules.vue` — edit button added per row; clicking opens the create modal pre-populated with the row's current values. Saving calls `updateSchedule` rather than `createSchedule`. Modal title and submit label update contextually (Create / Save Changes).
+
 ## v1.3.0 — service self-registration + watchdog activation
 
 - gateway: `start()` now calls `registerProcess('gateway', pid, 'node', argv)` after `startHttpServer()` and emits a 30 s heartbeat via `setInterval`. `unregisterProcess('gateway')` is called in the shutdown handler before process exit, so the watchdog's row is removed cleanly.
