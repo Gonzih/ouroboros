@@ -218,6 +218,83 @@ describe('watchdogTick', () => {
   })
 })
 
+describe('pruneOldData (via watchdogTick)', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  const noOpState: MetaAgentState = { restartService: vi.fn() }
+
+  it('logs pruned row count when old logs are deleted', async () => {
+    mockGetStaleJobs.mockResolvedValueOnce([])
+    // First call: services query (returns empty)
+    // Second call: log pruning CTE (returns count > 0)
+    // Third call: job output pruning CTE (returns count 0)
+    const mockDbFn = vi.fn()
+      .mockResolvedValueOnce([])                       // services
+      .mockResolvedValueOnce([{ count: '42' }])        // log prune
+      .mockResolvedValueOnce([{ count: '0' }])         // output prune
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+    await watchdogTick(noOpState)
+
+    expect(mockLog).toHaveBeenCalledWith('watchdog', expect.stringContaining('42 log rows'))
+  })
+
+  it('logs pruned row count when old job output is deleted', async () => {
+    mockGetStaleJobs.mockResolvedValueOnce([])
+    const mockDbFn = vi.fn()
+      .mockResolvedValueOnce([])                       // services
+      .mockResolvedValueOnce([{ count: '0' }])         // log prune
+      .mockResolvedValueOnce([{ count: '7' }])         // output prune
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+    await watchdogTick(noOpState)
+
+    expect(mockLog).toHaveBeenCalledWith('watchdog', expect.stringContaining('7 job output rows'))
+  })
+
+  it('logs error and continues when log pruning DB query throws', async () => {
+    mockGetStaleJobs.mockResolvedValueOnce([])
+    const mockDbFn = vi.fn()
+      .mockResolvedValueOnce([])                       // services
+      .mockRejectedValueOnce(new Error('lock timeout')) // log prune fails
+      .mockResolvedValueOnce([{ count: '0' }])         // output prune still runs
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+    await watchdogTick(noOpState)
+
+    expect(mockLog).toHaveBeenCalledWith('watchdog', expect.stringContaining('log pruning failed'))
+  })
+
+  it('logs error and continues when job output pruning DB query throws', async () => {
+    mockGetStaleJobs.mockResolvedValueOnce([])
+    const mockDbFn = vi.fn()
+      .mockResolvedValueOnce([])                       // services
+      .mockResolvedValueOnce([{ count: '0' }])         // log prune succeeds
+      .mockRejectedValueOnce(new Error('disk full'))   // output prune fails
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+    await watchdogTick(noOpState)
+
+    expect(mockLog).toHaveBeenCalledWith('watchdog', expect.stringContaining('job output pruning failed'))
+  })
+
+  it('does not log when nothing was pruned', async () => {
+    mockGetStaleJobs.mockResolvedValueOnce([])
+    const mockDbFn = vi.fn()
+      .mockResolvedValueOnce([])                       // services
+      .mockResolvedValueOnce([{ count: '0' }])         // log prune — nothing
+      .mockResolvedValueOnce([{ count: '0' }])         // output prune — nothing
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+
+    await watchdogTick(noOpState)
+
+    const pruneLogs = vi.mocked(mockLog).mock.calls.filter(
+      ([, msg]) => typeof msg === 'string' && msg.includes('pruned'),
+    )
+    expect(pruneLogs).toHaveLength(0)
+  })
+})
+
 describe('makeMetaAgentState', () => {
   beforeEach(() => { vi.clearAllMocks() })
 

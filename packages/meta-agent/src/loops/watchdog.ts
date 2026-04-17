@@ -27,6 +27,42 @@ async function sleep(ms: number): Promise<void> {
 
 const WATCHDOG_INTERVAL_MS = parseInt(process.env['OURO_WATCHDOG_INTERVAL_MS'] ?? '60000', 10)
 
+// Prune log and output rows older than their retention periods.
+// Runs inside watchdogTick so it piggybacks on the existing timer.
+async function pruneOldData(): Promise<void> {
+  const db = getDb()
+  try {
+    const { count: logCount } = await db<{ count: string }[]>`
+      WITH deleted AS (
+        DELETE FROM ouro_logs WHERE ts < NOW() - INTERVAL '30 days' RETURNING 1
+      ) SELECT COUNT(*)::text AS count FROM deleted
+    `.then(r => r[0] ?? { count: '0' })
+    if (parseInt(logCount, 10) > 0) {
+      await log('watchdog', `pruned ${logCount} log rows older than 30 days`)
+    }
+  } catch (err) {
+    await log('watchdog', `log pruning failed: ${String(err)}`)
+  }
+
+  try {
+    const { count: outCount } = await db<{ count: string }[]>`
+      WITH deleted AS (
+        DELETE FROM ouro_job_output
+        WHERE job_id IN (
+          SELECT id FROM ouro_jobs
+          WHERE status IN ('completed', 'failed', 'cancelled')
+            AND completed_at < NOW() - INTERVAL '7 days'
+        ) RETURNING 1
+      ) SELECT COUNT(*)::text AS count FROM deleted
+    `.then(r => r[0] ?? { count: '0' })
+    if (parseInt(outCount, 10) > 0) {
+      await log('watchdog', `pruned ${outCount} job output rows for completed jobs older than 7 days`)
+    }
+  } catch (err) {
+    await log('watchdog', `job output pruning failed: ${String(err)}`)
+  }
+}
+
 export async function watchdogTick(state: MetaAgentState): Promise<void> {
   // 1. Find stale running jobs (no heartbeat > 10 min)
   try {
@@ -73,6 +109,9 @@ export async function watchdogTick(state: MetaAgentState): Promise<void> {
   } catch (err) {
     await log('watchdog', `service check failed: ${String(err)}`)
   }
+
+  // 3. Prune stale logs and job output
+  await pruneOldData()
 }
 
 export async function watchdogLoop(state: MetaAgentState): Promise<void> {
