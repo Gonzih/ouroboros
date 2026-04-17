@@ -180,6 +180,15 @@
 - [x] mcp-factory: 2 new `generateConfig` tests for gdrive; remove gdrive from stub scheme list
 - [x] `.env.example`: document `GOOGLE_APPLICATION_CREDENTIALS` with setup instructions
 
+## v2.1.2 — Complete gateway command set ✅ complete
+
+- [x] gateway: `/task` command — Telegram, Slack, Discord. Full form + short form (OURO_REPO_ROOT default)
+- [x] gateway: `/feedback` command — Telegram, Slack, Discord. Enqueues to ouro_feedback
+- [x] gateway: `/logs` command — Telegram, Slack, Discord. Last 10 ouro_logs entries
+- [x] gateway: `/mcp` command added to Discord (already in Telegram). Discord now at full parity
+- [x] spec/05-gateway.md: command table updated to reflect all implemented commands
+- [x] Tests: 7 new tests. gateway: 129 tests. Total: 496
+
 ## v2.1.1 — Discord /mcp parity + env/doc housekeeping ✅ complete
 
 - [x] gateway: add `/mcp` slash command to DiscordAdapter — lists registered MCPs with status and tools (parity with Telegram)

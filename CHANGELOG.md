@@ -1,3 +1,12 @@
+## v2.1.2 — Complete gateway command set
+
+- gateway: `/task` command added to Telegram, Slack, and Discord. Full form: `/task <backend> <target> <instructions>`. Short form: `/task <instructions>` uses `git` backend and `OURO_REPO_ROOT` as target. Creates a job row in `ouro_jobs` and enqueues to `ouro_tasks`.
+- gateway: `/feedback` command added to Telegram, Slack, and Discord. Enqueues to `ouro_feedback` directly, feeding the meta-agent's evolution loop without needing the UI.
+- gateway: `/logs` command added to Telegram, Slack, and Discord. Shows last 10 `ouro_logs` entries.
+- gateway: `/mcp` command added to Discord (already existed in Telegram). Discord now has full parity with Telegram: `/approve`, `/reject`, `/status`, `/jobs`, `/mcp`, `/logs`, `/feedback`, `/task`.
+- spec/05-gateway.md: command table updated to reflect all implemented commands accurately.
+- Tests: 7 new tests. gateway: 129 tests. Total: 496.
+
 ## v2.1.1 — Discord /mcp parity
 
 - gateway: Discord adapter now supports `/mcp` slash command (lists all registered MCP servers with status and tools found). Discord now has full command parity with Telegram: `/approve`, `/reject`, `/status`, `/jobs`, `/mcp`.
