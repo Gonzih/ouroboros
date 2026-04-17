@@ -33,12 +33,11 @@ Worker calls: `prepare → run claude → commit → cleanup`. Backend is a plug
 - `cleanup`: no-op (it's the user's own folder)
 - No PR step — changes are committed locally
 
-### S3Backend (stub v1)
+### S3Backend
 - `prepare`: `aws s3 sync s3://{bucket}/{prefix} /tmp/ouro-{taskId}`
 - `commit`: `aws s3 sync /tmp/ouro-{taskId} s3://{bucket}/{prefix}`
 - `cleanup`: `rm -rf /tmp/ouro-{taskId}`
-- Required env: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
-- v1: basic sync, no versioning
+- Required env: `AWS_ACCESS_KEY_ID`+`AWS_SECRET_ACCESS_KEY` or `AWS_PROFILE`
 
 ### GDriveBackend
 - Uses `rclone` — must be installed and configured with a `gdrive` remote
@@ -47,9 +46,10 @@ Worker calls: `prepare → run claude → commit → cleanup`. Backend is a plug
 - `cleanup`: `rm -rf /tmp/ouro-{taskId}`
 - Connection string: `gdrive://1BxiMVs0XRA` → rclone path `gdrive:1BxiMVs0XRA`
 
-### OneDriveBackend (stub v1)
-- Also uses `rclone` with OneDrive remote
-- Same pattern as GDriveBackend
+### OneDriveBackend
+- Uses `rclone` with a configured OneDrive remote
+- Connection string: `onedrive://Documents/data` → rclone path `onedrive:Documents/data`
+- Same prepare/commit/cleanup pattern as GDriveBackend
 
 ## Session Continuity (--continue)
 
