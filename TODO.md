@@ -149,6 +149,14 @@
 - [x] spec/07-open-questions.md: HTTP/HTTPS moved from stubbed to fully implemented
 - [x] chore: bump core, mcp-factory, mcp-server, worker, ui from 1.6.0 → 1.7.3
 
+## v1.8.0 — gateway event alignment ✅ complete
+
+- [x] evolution.ts: all five `publish('ouro_notify', ...)` calls use `id` (not `feedbackId`) — fixes `/approve undefined` shown to users
+- [x] gateway.ts: replace dead `evolution_result` handler with `evolution_approved`, `evolution_applied`, `evolution_rejected`, `evolution_merge_failed`
+- [x] gateway.ts: `evolution_proposed` message now includes `prUrl`; `formatEvent` default returns `null` to drop unknown types cleanly
+- [x] Tests: 4 new gateway event tests + 1 unknown-type drop test; evolution.test.ts assertions updated. gateway: 117 tests. Total: 473
+- [x] coordinator.ts: version string bumped to v1.7.3; CLAUDE.md tool count corrected to 20
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

@@ -1,3 +1,10 @@
+## v1.8.0 — gateway event alignment
+
+- evolution.ts: all `publish('ouro_notify', ...)` calls in the evolution loop used `feedbackId` as the event field name, but the gateway expected `id` — every Telegram/Slack/Discord notification for evolution proposals showed `/approve undefined`. Fixed: all five publish calls now use `id`.
+- gateway.ts: `evolution_result` event type was dead code — the system never published it. Replaced with the four actual event types: `evolution_approved` (HTTP endpoint approves), `evolution_applied` (PR merged and code running), `evolution_rejected` (proposal rejected), `evolution_merge_failed` (merge attempt failed). Each has an informative message.
+- gateway.ts: `evolution_proposed` message now includes the PR URL. `formatEvent` has an explicit `default: return null` so future unknown event types are silently dropped rather than broadcasting `undefined`.
+- Tests: 4 new gateway event format tests + 1 unknown-type drop test; evolution.test.ts assertions updated to `id`. gateway: 117 tests. Total: 473.
+
 ## v1.7.3 — http/https scheme-aware validation + version alignment
 
 - mcp-factory: `http` and `https` scheme validation now passes a fetch-specific prompt to the Claude subprocess — instructs it to use the `fetch` tool and treat any HTTP response (including 4xx) as connectivity success. Previously the generic validation prompt was used, which could cause false FAILED results on endpoints that return 4xx for root paths.
