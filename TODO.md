@@ -180,6 +180,14 @@
 - [x] mcp-factory: 2 new `generateConfig` tests for gdrive; remove gdrive from stub scheme list
 - [x] `.env.example`: document `GOOGLE_APPLICATION_CREDENTIALS` with setup instructions
 
+## v2.1.1 — Discord /mcp parity + env/doc housekeeping ✅ complete
+
+- [x] gateway: add `/mcp` slash command to DiscordAdapter — lists registered MCPs with status and tools (parity with Telegram)
+- [x] Tests: 1 new Discord /mcp test. gateway: 118 tests. Total: 485
+- [x] chore: complete env var list in CLAUDE.md and .env.example (PORT_GATEWAY, AWS vars, OURO_SCHEDULER_INTERVAL_MS, OURO_OIDC_ISSUER, GOOGLE_APPLICATION_CREDENTIALS)
+- [x] docs: remove "stub v1" labels from S3/GDrive/OneDrive worker backend specs (all are fully implemented)
+- [x] docs: update spec/06-mcp-factory.md — gdrive row updated to v1 with correct package and config example
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

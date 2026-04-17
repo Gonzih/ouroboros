@@ -1,3 +1,10 @@
+## v2.1.1 — Discord /mcp parity
+
+- gateway: Discord adapter now supports `/mcp` slash command (lists all registered MCP servers with status and tools found). Discord now has full command parity with Telegram: `/approve`, `/reject`, `/status`, `/jobs`, `/mcp`.
+- chore: `PORT_GATEWAY`, `OURO_MAX_WORKERS`, `OURO_LEGACY_LOOPS`, `OURO_WATCHDOG_INTERVAL_MS`, `OURO_SCHEDULER_INTERVAL_MS`, `OURO_OIDC_ISSUER`, `GOOGLE_APPLICATION_CREDENTIALS`, and AWS credentials documented in both `CLAUDE.md` and `.env.example`.
+- docs: spec/03-worker.md and spec/06-mcp-factory.md updated to reflect all worker storage backends (S3, GDrive, OneDrive) and the GDrive MCP connector are fully implemented.
+- Tests: 1 new Discord /mcp test. gateway: 118 tests. Total: 485.
+
 ## v2.1.0 — Google Drive MCP backend
 
 - mcp-factory: `gdrive://` scheme is now fully implemented. `generateConfig('gdrive', 'gdrive:///path/to/sa.json')` returns an `npx @modelcontextprotocol/server-gdrive` config with `GOOGLE_APPLICATION_CREDENTIALS` set to the credentials file path extracted from the connection string. Previously all three storage stubs (s3, gdrive, onedrive) threw `StubError`; gdrive now works end-to-end through registration, validation, and Claude tool access.
