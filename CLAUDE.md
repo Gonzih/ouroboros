@@ -98,7 +98,12 @@ LISTEN/NOTIFY on channel 'ouro_notify'
 ```
 DATABASE_URL                     required  postgres://user:pass@host:5432/ouroboros
 CLAUDE_CODE_OAUTH_TOKEN          required  for meta-agent claude subprocesses
+OURO_REPO_ROOT                   required  absolute path to ouroboros checkout (for self-evolution)
 GITHUB_TOKEN                     optional  git backend worker
+GOOGLE_APPLICATION_CREDENTIALS   optional  gdrive:// MCP backend — path to GCP service account JSON
+AWS_ACCESS_KEY_ID                optional  s3 worker backend (or use AWS_PROFILE)
+AWS_SECRET_ACCESS_KEY            optional  s3 worker backend
+AWS_PROFILE                      optional  s3 worker backend (alternative to key/secret)
 TELEGRAM_BOT_TOKEN               optional  gateway Telegram adapter
 TELEGRAM_CHAT_ID                 optional
 SLACK_BOT_TOKEN                  optional  gateway Slack adapter
@@ -108,9 +113,14 @@ DISCORD_BOT_TOKEN                optional  gateway Discord adapter
 DISCORD_CHANNEL_ID               optional
 DISCORD_PUBLIC_KEY               optional  enables Discord inbound (/approve, /reject via Interactions API)
 OURO_WEBHOOK_URL                 optional  generic outbound webhook
+PORT_GATEWAY                     optional  default 7701
 PORT_UI                          optional  default 7702
 PORT_MCP_FACTORY                 optional  default 7703
-OURO_REPO_ROOT                   required  absolute path to ouroboros checkout (for self-evolution)
+OURO_MAX_WORKERS                 optional  max concurrent worker processes, default 3
+OURO_LEGACY_LOOPS                optional  true = use v0.1 Node.js polling loops, default false
+OURO_WATCHDOG_INTERVAL_MS        optional  watchdog tick interval, default 60000
+OURO_SCHEDULER_INTERVAL_MS       optional  scheduler tick interval, default 30000
+OURO_OIDC_ISSUER                 optional  OIDC issuer URL — enables JWT auth on gateway + UI routes
 ```
 
 ---
