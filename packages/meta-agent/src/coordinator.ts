@@ -72,7 +72,8 @@ export async function spawnCoordinator(): Promise<ChildProcess> {
 
   claude.stderr?.on('data', (data: Buffer) => {
     const text = data.toString().trim()
-    if (text) void log('coordinator:err', text)
+    // Claude CLI emits this warning on every non-TTY spawn; it's benign — filter it out
+    if (text && !text.includes('no stdin data received')) void log('coordinator:err', text)
   })
 
   // Mark that a session exists so future restarts use --continue
