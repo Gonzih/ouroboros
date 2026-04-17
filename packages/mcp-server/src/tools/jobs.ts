@@ -20,6 +20,7 @@ export const jobTools = [
           description: 'Filter by status (omit for all)',
         },
         limit: { type: 'number', description: 'Max rows to return (default 20)' },
+        offset: { type: 'number', description: 'Number of rows to skip for pagination (default 0)' },
       },
     },
   },
@@ -90,11 +91,13 @@ export async function handleJobTool(
   if (name === 'list_jobs') {
     const status = typeof a['status'] === 'string' ? a['status'] : null
     const limit = typeof a['limit'] === 'number' ? a['limit'] : 20
+    const offset = typeof a['offset'] === 'number' ? a['offset'] : 0
     const rows = await db`
       SELECT * FROM ouro_jobs
       WHERE (${status}::text IS NULL OR status = ${status})
       ORDER BY created_at DESC
       LIMIT ${limit}
+      OFFSET ${offset}
     `
     return textResult(JSON.stringify(rows, null, 2))
   }

@@ -273,6 +273,39 @@ describe('UI REST API routes', () => {
     })
   })
 
+  describe('PATCH /api/schedules/:id', () => {
+    it('updates schedule fields and returns ok', async () => {
+      mockDb.mockResolvedValueOnce([{ id: 's1' }])
+      const res = await request(app)
+        .patch('/api/schedules/s1')
+        .send({ instructions: 'Updated instructions', target: '/new/path' })
+      expect(res.status).toBe(200)
+      expect(res.body.ok).toBe(true)
+    })
+
+    it('returns 400 when no fields provided', async () => {
+      const res = await request(app).patch('/api/schedules/s1').send({})
+      expect(res.status).toBe(400)
+      expect(res.body.error).toContain('at least one field required')
+    })
+
+    it('returns 400 for invalid cron expression', async () => {
+      const res = await request(app)
+        .patch('/api/schedules/s1')
+        .send({ cron_expr: 'INVALID' })
+      expect(res.status).toBe(400)
+      expect(res.body.error).toContain('invalid cron')
+    })
+
+    it('returns 404 when schedule not found', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app)
+        .patch('/api/schedules/no-such')
+        .send({ name: 'new-name' })
+      expect(res.status).toBe(404)
+    })
+  })
+
   describe('PATCH /api/schedules/:id/toggle', () => {
     it('toggles schedule enabled state', async () => {
       mockDb.mockResolvedValueOnce([{ id: 's1', enabled: false }])

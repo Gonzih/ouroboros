@@ -55,6 +55,16 @@ describe('handleJobTool', () => {
     expect(mockGetDb).toHaveBeenCalledOnce()
   })
 
+  it('list_jobs with offset returns JSON array', async () => {
+    const jobs = [{ id: 'j5', status: 'completed' }]
+    mockGetDb.mockReturnValue(makeDbMock(jobs))
+    const result = await handleJobTool('list_jobs', { limit: 10, offset: 20 })
+    expect(result.content[0]?.type).toBe('text')
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '[]')
+    expect(Array.isArray(parsed)).toBe(true)
+    expect(mockGetDb).toHaveBeenCalledOnce()
+  })
+
   it('get_job_output returns lines joined by newline', async () => {
     const outputRows = [
       { line: 'line 3' },
@@ -392,6 +402,43 @@ describe('handleScheduleTool', () => {
   it('delete_schedule returns error when not found', async () => {
     mockGetDb.mockReturnValue(makeDbMock([]))
     const result = await handleScheduleTool('delete_schedule', { id: 'missing' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['error']).toBe('schedule not found')
+  })
+
+  it('update_schedule returns updated: true when found', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([{ id: 's1' }]))
+    const result = await handleScheduleTool('update_schedule', {
+      id: 's1',
+      instructions: 'Generate weekly report instead',
+    })
+    expect(mockLog).toHaveBeenCalledOnce()
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['updated']).toBe(true)
+  })
+
+  it('update_schedule recomputes next_run_at when cron_expr changes', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([{ id: 's1' }]))
+    const result = await handleScheduleTool('update_schedule', {
+      id: 's1',
+      cron_expr: '0 9 * * *',
+    })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['updated']).toBe(true)
+  })
+
+  it('update_schedule returns error for invalid cron expression', async () => {
+    const result = await handleScheduleTool('update_schedule', {
+      id: 's1',
+      cron_expr: 'INVALID',
+    })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['error']).toMatch(/invalid cron/)
+  })
+
+  it('update_schedule returns error when not found', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([]))
+    const result = await handleScheduleTool('update_schedule', { id: 'missing', name: 'new-name' })
     const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
     expect((parsed as Record<string, unknown>)['error']).toBe('schedule not found')
   })

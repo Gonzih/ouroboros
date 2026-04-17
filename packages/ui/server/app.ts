@@ -371,6 +371,56 @@ apiRouter.post('/schedules', async (req, res) => {
   }
 })
 
+apiRouter.patch('/schedules/:id', async (req, res) => {
+  const id = req.params['id'] ?? ''
+  if (!id) { res.status(400).json({ error: 'id required' }); return }
+  const body = req.body as {
+    name?: unknown; cron_expr?: unknown; backend?: unknown; target?: unknown; instructions?: unknown
+  }
+  const newName = typeof body.name === 'string' ? body.name : null
+  const cronExpr = typeof body.cron_expr === 'string' ? body.cron_expr : null
+  const backend = typeof body.backend === 'string' ? body.backend : null
+  const target = typeof body.target === 'string' ? body.target : null
+  const instructions = typeof body.instructions === 'string' ? body.instructions : null
+
+  if (newName === null && cronExpr === null && backend === null && target === null && instructions === null) {
+    res.status(400).json({ error: 'at least one field required: name, cron_expr, backend, target, instructions' })
+    return
+  }
+
+  let nextRun: Date | null | undefined = undefined
+  if (cronExpr !== null) {
+    try {
+      const cron = new Cron(cronExpr)
+      nextRun = cron.nextRun() ?? null
+    } catch {
+      res.status(400).json({ error: 'invalid cron expression' })
+      return
+    }
+  }
+
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE ouro_schedules
+      SET
+        name         = COALESCE(${newName}::text, name),
+        cron_expr    = COALESCE(${cronExpr}::text, cron_expr),
+        backend      = COALESCE(${backend}::text, backend),
+        target       = COALESCE(${target}::text, target),
+        instructions = COALESCE(${instructions}::text, instructions),
+        next_run_at  = CASE WHEN ${nextRun !== undefined} THEN ${nextRun ?? null} ELSE next_run_at END
+      WHERE id = ${id}
+      RETURNING id
+    `
+    if (result.length === 0) { res.status(404).json({ error: 'schedule not found' }); return }
+    await log('ui', `updated schedule ${id}`)
+    res.json({ ok: true })
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
 apiRouter.patch('/schedules/:id/toggle', async (req, res) => {
   const id = req.params['id'] ?? ''
   if (!id) { res.status(400).json({ error: 'id required' }); return }

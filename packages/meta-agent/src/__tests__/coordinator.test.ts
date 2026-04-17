@@ -133,7 +133,7 @@ describe('coordinator', () => {
 
     it('mentions current version and --continue persistence', () => {
       const prompt = buildCoordinatorPrompt()
-      expect(prompt).toContain('v1.1.1')
+      expect(prompt).toContain('v1.2.0')
       expect(prompt).toContain('--continue')
     })
 

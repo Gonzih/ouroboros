@@ -23,13 +23,33 @@ export const scheduleTools = [
         cron_expr: { type: 'string', description: 'Cron expression (e.g. "0 9 * * *" for 9am daily)' },
         backend: {
           type: 'string',
-          enum: ['git', 'local'],
+          enum: ['git', 'local', 's3', 'gdrive', 'onedrive'],
           description: 'Storage backend for spawned workers',
         },
         target: { type: 'string', description: 'Target path or repository URL' },
         instructions: { type: 'string', description: 'Instructions passed to each spawned worker' },
       },
       required: ['name', 'cron_expr', 'backend', 'target', 'instructions'],
+    },
+  },
+  {
+    name: 'update_schedule',
+    description: 'Update fields of an existing schedule. Only provided fields are changed; omitted fields keep their current values. Changing cron_expr recomputes next_run_at.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        id: { type: 'string', description: 'Schedule ID to update' },
+        name: { type: 'string', description: 'New unique name' },
+        cron_expr: { type: 'string', description: 'New cron expression' },
+        backend: {
+          type: 'string',
+          enum: ['git', 'local', 's3', 'gdrive', 'onedrive'],
+          description: 'New storage backend',
+        },
+        target: { type: 'string', description: 'New target path or repository URL' },
+        instructions: { type: 'string', description: 'New instructions for spawned workers' },
+      },
+      required: ['id'],
     },
   },
   {
@@ -95,6 +115,41 @@ export async function handleScheduleTool(
     `
     await log('mcp-server', `created schedule "${scheduleName}" (${cronExpr})`)
     return textResult(JSON.stringify({ id }))
+  }
+
+  if (name === 'update_schedule') {
+    const id = typeof a['id'] === 'string' ? a['id'] : ''
+    const newName = typeof a['name'] === 'string' ? a['name'] : null
+    const cronExpr = typeof a['cron_expr'] === 'string' ? a['cron_expr'] : null
+    const backend = typeof a['backend'] === 'string' ? a['backend'] : null
+    const target = typeof a['target'] === 'string' ? a['target'] : null
+    const instructions = typeof a['instructions'] === 'string' ? a['instructions'] : null
+
+    let nextRun: Date | null | undefined = undefined
+    if (cronExpr !== null) {
+      try {
+        const cron = new Cron(cronExpr)
+        nextRun = cron.nextRun() ?? null
+      } catch {
+        return textResult(JSON.stringify({ error: 'invalid cron expression' }))
+      }
+    }
+
+    const rows = await db<{ id: string }[]>`
+      UPDATE ouro_schedules
+      SET
+        name         = COALESCE(${newName}::text, name),
+        cron_expr    = COALESCE(${cronExpr}::text, cron_expr),
+        backend      = COALESCE(${backend}::text, backend),
+        target       = COALESCE(${target}::text, target),
+        instructions = COALESCE(${instructions}::text, instructions),
+        next_run_at  = CASE WHEN ${nextRun !== undefined} THEN ${nextRun ?? null} ELSE next_run_at END
+      WHERE id = ${id}
+      RETURNING id
+    `
+    if (rows.length === 0) return textResult(JSON.stringify({ error: 'schedule not found' }))
+    await log('mcp-server', `updated schedule ${id}`)
+    return textResult(JSON.stringify({ updated: true }))
   }
 
   if (name === 'toggle_schedule') {

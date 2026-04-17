@@ -1,3 +1,12 @@
+## v1.2.0 — schedule editing + job pagination + extended backend support
+
+- mcp-server/schedules: new `update_schedule` MCP tool — updates any subset of a schedule's fields (name, cron_expr, backend, target, instructions) with partial-update semantics; omitted fields keep their current values. Changing `cron_expr` recomputes `next_run_at` via croner. Returns `{ error }` on invalid cron or unknown ID without throwing.
+- mcp-server/schedules: `create_schedule` and `update_schedule` backend enum now includes `s3`, `gdrive`, `onedrive` — schedule workers can now target the storage backends added in v1.1.0.
+- mcp-server/jobs: `list_jobs` now accepts an `offset` parameter for cursor-style pagination alongside the existing `limit`.
+- ui: `PATCH /api/schedules/:id` REST endpoint mirrors `update_schedule` — partial update with cron validation; returns 400 on invalid cron, 404 on unknown ID, 400 if no fields provided.
+- meta-agent/coordinator: coordinator prompt updated to reference `update_schedule` alongside the other schedule tools; version string aligned to v1.2.0.
+- Tests: 9 new tests (mcp-server: 4 update_schedule cases + 1 offset pagination; ui: 4 PATCH schedule cases). Total: 233 tests.
+
 ## v1.1.2 — coordinator mode now runs all execution loops
 
 - meta-agent: coordinator mode (default, non-legacy) was missing `startWorkerDispatch`, `startEvolution`, and `startScheduler` from its `Promise.all`. Jobs created via `spawn_worker` MCP calls were enqueued to `ouro_tasks` but never dequeued — no workers ever ran. Scheduled jobs never triggered. Feedback never got processed into PRs. All three loops are now included alongside `watchdogLoop` and `runCoordinatorLoop`. Legacy mode is unaffected.

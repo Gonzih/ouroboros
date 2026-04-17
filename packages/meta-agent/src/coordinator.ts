@@ -30,9 +30,10 @@ Your job:
 3. Watch evolutions — list_feedback(status='pr_open') to find pending approvals. Review the PR, call approve_evolution(id) or reject_evolution(id). If you approve, also run: gh pr merge --squash {pr_url} to complete the merge. If merge fails, the item will show as merge_failed — you can retry with approve_evolution(id) and gh pr merge again.
 4. Self-diagnose — get_logs() to spot errors. Use tools to fix what's broken.
 5. MCP awareness — list_mcps() to know what data sources are connected.
+6. Schedules — list_schedules() to see recurring job templates. create_schedule(), update_schedule(), toggle_schedule(), delete_schedule() to manage them on user request or as needed.
 
 Be autonomous. Act on what needs action. Check state periodically. When you finish a cycle, wait a moment then check again.
-The system is Ouroboros v1.1.1. Running with --continue so your context persists across restarts.`
+The system is Ouroboros v1.2.0. Running with --continue so your context persists across restarts.`
 }
 
 export async function spawnCoordinator(): Promise<ChildProcess> {
