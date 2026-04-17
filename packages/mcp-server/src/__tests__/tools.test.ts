@@ -158,6 +158,49 @@ describe('handleJobTool', () => {
     expect((parsed as Record<string, unknown>)['cancelled']).toBe(false)
   })
 
+  it('retry_job creates a new pending job from a failed one', async () => {
+    const fn = vi.fn()
+      .mockResolvedValueOnce([{ description: 'run tests', backend: 'local', target: '/tmp', status: 'failed', instructions: 'detailed instructions' }])
+      .mockResolvedValueOnce([]) // INSERT
+    mockGetDb.mockReturnValue(fn as unknown as ReturnType<typeof getDb>)
+    const result = await handleJobTool('retry_job', { job_id: 'j-failed' })
+    expect(mockEnqueue).toHaveBeenCalledWith(
+      'ouro_tasks',
+      expect.objectContaining({ backend: 'local', target: '/tmp', instructions: 'detailed instructions' }),
+    )
+    expect(mockLog).toHaveBeenCalledOnce()
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect(typeof (parsed as Record<string, unknown>)['job_id']).toBe('string')
+  })
+
+  it('retry_job falls back to description when instructions is null', async () => {
+    const fn = vi.fn()
+      .mockResolvedValueOnce([{ description: 'run tests', backend: 'local', target: '/tmp', status: 'cancelled', instructions: null }])
+      .mockResolvedValueOnce([])
+    mockGetDb.mockReturnValue(fn as unknown as ReturnType<typeof getDb>)
+    await handleJobTool('retry_job', { job_id: 'j-cancelled' })
+    expect(mockEnqueue).toHaveBeenCalledWith(
+      'ouro_tasks',
+      expect.objectContaining({ instructions: 'run tests' }),
+    )
+  })
+
+  it('retry_job returns error when job not found', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([]))
+    const result = await handleJobTool('retry_job', { job_id: 'missing' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['error']).toBe('job not found')
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
+  it('retry_job returns error for non-retryable job status', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([{ description: 'run tests', backend: 'local', target: '/tmp', status: 'running', instructions: null }]))
+    const result = await handleJobTool('retry_job', { job_id: 'j-running' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['error']).toMatch(/only retry failed or cancelled/)
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
   it('throws on unknown tool name', async () => {
     mockGetDb.mockReturnValue(makeDbMock([]))
     await expect(handleJobTool('nonexistent', {})).rejects.toThrow('Unknown job tool')

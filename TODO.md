@@ -114,6 +114,11 @@
 - [x] ui: `updateSchedule(id, payload)` store action — PATCH `/api/schedules/:id` (partial update)
 - [x] ui: `Schedules.vue` — edit button per row opens pre-populated modal; save calls `updateSchedule`
 
+## v1.6.0 — retry_job in Control MCP ✅ complete
+
+- [x] mcp-server/jobs: `retry_job` tool — clone failed/cancelled job as new pending entry, re-enqueue
+- [x] Tests: 4 new tests (success, instructions fallback, not-found, non-retryable). mcp-server: 54 tests
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

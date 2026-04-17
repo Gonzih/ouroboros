@@ -79,6 +79,17 @@ export const jobTools = [
       required: ['job_id'],
     },
   },
+  {
+    name: 'retry_job',
+    description: 'Retry a failed or cancelled job by creating a new job with the same parameters',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        job_id: { type: 'string', description: 'ID of the failed or cancelled job to retry' },
+      },
+      required: ['job_id'],
+    },
+  },
 ]
 
 export async function handleJobTool(
@@ -161,6 +172,27 @@ export async function handleJobTool(
       RETURNING id
     `
     return textResult(JSON.stringify({ cancelled: runningRows.length > 0 }))
+  }
+
+  if (name === 'retry_job') {
+    const jobId = typeof a['job_id'] === 'string' ? a['job_id'] : ''
+    const rows = await db<{ description: string; backend: string; target: string; status: string; instructions: string | null }[]>`
+      SELECT description, backend, target, status, instructions FROM ouro_jobs WHERE id = ${jobId}
+    `
+    const job = rows[0]
+    if (!job) return textResult(JSON.stringify({ error: 'job not found' }))
+    if (job.status !== 'failed' && job.status !== 'cancelled') {
+      return textResult(JSON.stringify({ error: 'can only retry failed or cancelled jobs', status: job.status }))
+    }
+    const newId = randomUUID()
+    const instructions = job.instructions ?? job.description
+    await db`
+      INSERT INTO ouro_jobs (id, description, backend, target, status, instructions)
+      VALUES (${newId}, ${job.description}, ${job.backend}, ${job.target}, 'pending', ${instructions})
+    `
+    await enqueue('ouro_tasks', { id: newId, backend: job.backend, target: job.target, instructions })
+    await log('mcp-server', `retrying job ${jobId} as new job ${newId}`)
+    return textResult(JSON.stringify({ job_id: newId }))
   }
 
   throw new Error(`Unknown job tool: ${name}`)

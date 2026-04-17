@@ -1,3 +1,8 @@
+## v1.6.0 — retry_job in Control MCP
+
+- mcp-server/jobs: `retry_job` tool added — creates a new pending job from a failed or cancelled one, preserving backend/target/instructions. Returns `{ job_id }` for the new job, or `{ error }` for not-found/non-retryable states. Closes the gap between UI retry and MCP control plane.
+- Tests: 4 new mcp-server tests (retry success, instructions-fallback-to-description, not-found, non-retryable status). mcp-server: 54 tests.
+
 ## v1.5.0 — Slack inbound: /approve and /reject via Events API
 
 - gateway/slack: `SlackAdapter.handleEvent()` added — verifies HMAC-SHA256 Slack signatures, guards against replay attacks (5-minute window), handles the URL verification challenge, and routes `/approve <id>` and `/reject <id>` message events to the same DB updates used by Telegram and the HTTP REST endpoints. Slack inbound is now at full parity with Telegram.
