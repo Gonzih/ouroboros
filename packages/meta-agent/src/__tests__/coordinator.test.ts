@@ -136,6 +136,16 @@ describe('coordinator', () => {
       expect(prompt).toContain('v0.2')
       expect(prompt).toContain('--continue')
     })
+
+    it('instructs coordinator to run gh pr merge after approving', () => {
+      const prompt = buildCoordinatorPrompt()
+      expect(prompt).toContain('gh pr merge')
+    })
+
+    it('instructs coordinator to handle merge_failed items', () => {
+      const prompt = buildCoordinatorPrompt()
+      expect(prompt).toContain('merge_failed')
+    })
   })
 
   describe('spawnCoordinator', () => {

@@ -27,7 +27,7 @@ export function buildCoordinatorPrompt(): string {
 Your job:
 1. Monitor workers — list_jobs() to find pending/stuck. spawn_worker() for new tasks queued by users.
 2. Process feedback — list_feedback(status='pending') every few minutes. Reason about each item, act on it.
-3. Watch evolutions — list_feedback(status='pr_open') to find pending approvals. Review and approve_evolution() or reject_evolution().
+3. Watch evolutions — list_feedback(status='pr_open') to find pending approvals. Review the PR, call approve_evolution(id) or reject_evolution(id). If you approve, also run: gh pr merge --squash {pr_url} to complete the merge. If merge fails, the item will show as merge_failed — you can retry with approve_evolution(id) and gh pr merge again.
 4. Self-diagnose — get_logs() to spot errors. Use tools to fix what's broken.
 5. MCP awareness — list_mcps() to know what data sources are connected.
 

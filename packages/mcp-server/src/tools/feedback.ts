@@ -28,7 +28,7 @@ export const feedbackTools = [
       properties: {
         status: {
           type: 'string',
-          enum: ['pending', 'pr_open', 'approved', 'rejected', 'applied'],
+          enum: ['pending', 'pr_open', 'approved', 'rejected', 'applied', 'merge_failed'],
           description: 'Filter by status (omit for all)',
         },
         limit: { type: 'number', description: 'Max rows to return (default 20)' },
@@ -41,7 +41,7 @@ export const feedbackTools = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        id: { type: 'string', description: 'Feedback ID with status pr_open' },
+        id: { type: 'string', description: 'Feedback ID with status pr_open or merge_failed (retry)' },
       },
       required: ['id'],
     },
@@ -96,7 +96,7 @@ export async function handleFeedbackTool(
     const id = typeof a['id'] === 'string' ? a['id'] : ''
     const rows = await db<{ id: string }[]>`
       UPDATE ouro_feedback SET status = 'approved'
-      WHERE id = ${id} AND status = 'pr_open'
+      WHERE id = ${id} AND status IN ('pr_open', 'merge_failed')
       RETURNING id
     `
     const approved = rows.length > 0

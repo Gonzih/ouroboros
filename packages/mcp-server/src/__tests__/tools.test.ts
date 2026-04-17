@@ -248,6 +248,25 @@ describe('handleFeedbackTool', () => {
     expect((parsed as Record<string, unknown>)['approved']).toBe(false)
   })
 
+  it('approve_evolution retries a merge_failed item', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([{ id: 'f1' }]))
+    const result = await handleFeedbackTool('approve_evolution', { id: 'f1' })
+    expect(mockPublish).toHaveBeenCalledWith(
+      'ouro_notify',
+      expect.objectContaining({ type: 'evolution_approved', feedbackId: 'f1' }),
+    )
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['approved']).toBe(true)
+  })
+
+  it('list_feedback with merge_failed status calls db', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([{ id: 'f1', status: 'merge_failed' }]))
+    const result = await handleFeedbackTool('list_feedback', { status: 'merge_failed' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '[]')
+    expect(Array.isArray(parsed)).toBe(true)
+    expect(mockGetDb).toHaveBeenCalledOnce()
+  })
+
   it('reject_evolution returns rejected: true', async () => {
     mockGetDb.mockReturnValue(makeDbMock([{ id: 'f1' }]))
     const result = await handleFeedbackTool('reject_evolution', { id: 'f1', reason: 'bad idea' })
