@@ -161,6 +161,65 @@ describe('UI REST API routes', () => {
     })
   })
 
+  describe('POST /api/feedback/:id/approve', () => {
+    it('approves a pr_open item and publishes event', async () => {
+      mockDb.mockResolvedValueOnce({ count: 1 })
+      const res = await request(app).post('/api/feedback/f1/approve')
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({ id: 'f1', status: 'approved' })
+      expect(mockPublish).toHaveBeenCalledWith('ouro_notify', { type: 'evolution_approved', id: 'f1' })
+    })
+
+    it('returns 409 when already approved/rejected', async () => {
+      mockDb.mockResolvedValueOnce({ count: 0 })
+      mockDb.mockResolvedValueOnce([{ status: 'approved' }])
+      const res = await request(app).post('/api/feedback/f1/approve')
+      expect(res.status).toBe(409)
+      expect(res.body.error).toContain('already approved')
+    })
+
+    it('returns 404 when feedback not found', async () => {
+      mockDb.mockResolvedValueOnce({ count: 0 })
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).post('/api/feedback/no-such/approve')
+      expect(res.status).toBe(404)
+    })
+  })
+
+  describe('POST /api/feedback/:id/reject', () => {
+    it('rejects a pr_open item and publishes event', async () => {
+      mockDb.mockResolvedValueOnce({ count: 1 })
+      const res = await request(app)
+        .post('/api/feedback/f1/reject')
+        .send({ reason: 'not needed' })
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({ id: 'f1', status: 'rejected' })
+      expect(mockPublish).toHaveBeenCalledWith('ouro_notify', { type: 'evolution_rejected', id: 'f1', reason: 'not needed' })
+    })
+
+    it('rejects without reason when reason is omitted', async () => {
+      mockDb.mockResolvedValueOnce({ count: 1 })
+      const res = await request(app).post('/api/feedback/f1/reject').send({})
+      expect(res.status).toBe(200)
+      expect(mockPublish).toHaveBeenCalledWith('ouro_notify', { type: 'evolution_rejected', id: 'f1' })
+    })
+
+    it('returns 409 when already rejected', async () => {
+      mockDb.mockResolvedValueOnce({ count: 0 })
+      mockDb.mockResolvedValueOnce([{ status: 'rejected' }])
+      const res = await request(app).post('/api/feedback/f1/reject')
+      expect(res.status).toBe(409)
+      expect(res.body.error).toContain('already rejected')
+    })
+
+    it('returns 404 when feedback not found', async () => {
+      mockDb.mockResolvedValueOnce({ count: 0 })
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).post('/api/feedback/no-such/reject')
+      expect(res.status).toBe(404)
+    })
+  })
+
   describe('POST /api/task', () => {
     it('creates task when all fields are provided', async () => {
       mockDb.mockResolvedValueOnce([])

@@ -157,6 +157,58 @@ apiRouter.post('/feedback', async (req, res) => {
   }
 })
 
+apiRouter.post('/feedback/:id/approve', async (req, res) => {
+  const id = req.params['id'] as string
+  try {
+    const db = getDb()
+    const updated = await db`
+      UPDATE ouro_feedback SET status = 'approved'
+      WHERE id = ${id} AND status NOT IN ('approved', 'rejected')
+    `
+    if (updated.count === 0) {
+      const existing = await db`SELECT status FROM ouro_feedback WHERE id = ${id}`
+      if (existing.length > 0) {
+        res.status(409).json({ error: `feedback ${id} is already ${String(existing[0]?.['status'])}` })
+      } else {
+        res.status(404).json({ error: `no feedback found with id ${id}` })
+      }
+      return
+    }
+    await publish('ouro_notify', { type: 'evolution_approved', id })
+    await log('ui', `evolution ${id} approved via UI`)
+    res.json({ id, status: 'approved' })
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+apiRouter.post('/feedback/:id/reject', async (req, res) => {
+  const id = req.params['id'] as string
+  const body = req.body as { reason?: unknown }
+  const reason = typeof body.reason === 'string' ? body.reason.trim() : undefined
+  try {
+    const db = getDb()
+    const updated = await db`
+      UPDATE ouro_feedback SET status = 'rejected'
+      WHERE id = ${id} AND status NOT IN ('approved', 'rejected')
+    `
+    if (updated.count === 0) {
+      const existing = await db`SELECT status FROM ouro_feedback WHERE id = ${id}`
+      if (existing.length > 0) {
+        res.status(409).json({ error: `feedback ${id} is already ${String(existing[0]?.['status'])}` })
+      } else {
+        res.status(404).json({ error: `no feedback found with id ${id}` })
+      }
+      return
+    }
+    await publish('ouro_notify', { type: 'evolution_rejected', id, ...(reason ? { reason } : {}) })
+    await log('ui', `evolution ${id} rejected via UI${reason ? `: ${reason}` : ''}`)
+    res.json({ id, status: 'rejected' })
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
 apiRouter.post('/task', async (req, res) => {
   const body = req.body as { instructions?: unknown; backend?: unknown; target?: unknown }
   const instructions = body.instructions

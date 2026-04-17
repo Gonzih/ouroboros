@@ -52,5 +52,27 @@ export const useFeedbackStore = defineStore('feedback', () => {
     }
   }
 
-  return { feedbacks, loading, submitting, error, fetchFeedback, submitFeedback }
+  async function approveFeedback(id: string): Promise<void> {
+    const res = await fetch(`/api/feedback/${id}/approve`, { method: 'POST' })
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string }
+      throw new Error(data.error ?? 'Failed to approve')
+    }
+    await fetchFeedback()
+  }
+
+  async function rejectFeedback(id: string, reason?: string): Promise<void> {
+    const res = await fetch(`/api/feedback/${id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    })
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string }
+      throw new Error(data.error ?? 'Failed to reject')
+    }
+    await fetchFeedback()
+  }
+
+  return { feedbacks, loading, submitting, error, fetchFeedback, submitFeedback, approveFeedback, rejectFeedback }
 })

@@ -7,6 +7,8 @@ const feedbackStore = useFeedbackStore()
 const text = ref('')
 const submitError = ref<string | null>(null)
 const submitSuccess = ref(false)
+const actioningId = ref<string | null>(null)
+const actionError = ref<string | null>(null)
 
 onMounted(() => { void feedbackStore.fetchFeedback() })
 
@@ -21,6 +23,30 @@ async function submit(): Promise<void> {
     setTimeout(() => { submitSuccess.value = false }, 3000)
   } catch (err: unknown) {
     submitError.value = String(err)
+  }
+}
+
+async function approve(id: string): Promise<void> {
+  actioningId.value = id
+  actionError.value = null
+  try {
+    await feedbackStore.approveFeedback(id)
+  } catch (err: unknown) {
+    actionError.value = String(err)
+  } finally {
+    actioningId.value = null
+  }
+}
+
+async function reject(id: string): Promise<void> {
+  actioningId.value = id
+  actionError.value = null
+  try {
+    await feedbackStore.rejectFeedback(id)
+  } catch (err: unknown) {
+    actionError.value = String(err)
+  } finally {
+    actioningId.value = null
   }
 }
 </script>
@@ -55,7 +81,9 @@ async function submit(): Promise<void> {
     <div v-if="feedbackStore.loading" class="dim-text">loading...</div>
     <div v-else-if="feedbackStore.error" class="error-text">{{ feedbackStore.error }}</div>
     <div v-else-if="feedbackStore.feedbacks.length === 0" class="dim-text">no feedback submitted yet</div>
-    <table v-else>
+    <template v-else>
+    <div v-if="actionError" class="error-text" style="margin-bottom:8px">{{ actionError }}</div>
+    <table>
       <thead>
         <tr>
           <th>id</th>
@@ -63,6 +91,7 @@ async function submit(): Promise<void> {
           <th>status</th>
           <th>pr</th>
           <th>submitted</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -75,9 +104,24 @@ async function submit(): Promise<void> {
             <span v-else class="dim-text">—</span>
           </td>
           <td class="dim-cell">{{ new Date(fb.created_at).toLocaleString() }}</td>
+          <td class="action-cell">
+            <template v-if="fb.status === 'pr_open' || fb.status === 'merge_failed'">
+              <button
+                class="approve-btn"
+                :disabled="actioningId === fb.id"
+                @click="approve(fb.id)"
+              >{{ actioningId === fb.id ? '…' : 'approve' }}</button>
+              <button
+                class="danger-btn"
+                :disabled="actioningId === fb.id"
+                @click="reject(fb.id)"
+              >reject</button>
+            </template>
+          </td>
         </tr>
       </tbody>
     </table>
+    </template>
   </div>
 </template>
 
@@ -135,5 +179,32 @@ async function submit(): Promise<void> {
 .dim-text {
   color: var(--dim);
   font-size: 12px;
+}
+
+.action-cell {
+  display: flex;
+  gap: 6px;
+}
+
+.approve-btn {
+  border-color: var(--green);
+  color: var(--green);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.approve-btn:hover {
+  background: color-mix(in srgb, var(--green) 15%, transparent);
+}
+
+.danger-btn {
+  border-color: var(--red);
+  color: var(--red);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.danger-btn:hover {
+  background: color-mix(in srgb, var(--red) 15%, transparent);
 }
 </style>

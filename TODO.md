@@ -157,6 +157,15 @@
 - [x] Tests: 4 new gateway event tests + 1 unknown-type drop test; evolution.test.ts assertions updated. gateway: 117 tests. Total: 473
 - [x] coordinator.ts: version string bumped to v1.7.3; CLAUDE.md tool count corrected to 20
 
+## v1.9.0 — approve/reject in UI + complete backend list ✅ complete
+
+- [x] ui: `POST /api/feedback/:id/approve` — update status to `approved`, publish `evolution_approved` event
+- [x] ui: `POST /api/feedback/:id/reject` — update status to `rejected`, accept optional `reason` body, publish `evolution_rejected` event
+- [x] ui: feedback store `approveFeedback(id)` and `rejectFeedback(id, reason?)` actions
+- [x] ui: Feedback.vue — approve/reject buttons for `pr_open` and `merge_failed` rows; disabled while in-flight; error display
+- [x] ui: Dashboard.vue — gdrive and onedrive added to backend dropdown (were missing; worker already supported them)
+- [x] Tests: 7 new tests (approve: success, 409, 404; reject: success, no-reason, 409, 404). ui: 58 tests. Total: 480
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

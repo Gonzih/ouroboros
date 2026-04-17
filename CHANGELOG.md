@@ -1,3 +1,11 @@
+## v1.9.0 — approve/reject in UI + complete backend list
+
+- ui: `POST /api/feedback/:id/approve` and `POST /api/feedback/:id/reject` added to the UI server. Approve updates status to `approved` and publishes `evolution_approved`; reject accepts an optional `reason` body, updates status to `rejected`, publishes `evolution_rejected`. Both return 409 if the item is already in a terminal state and 404 if it does not exist. Previously the only way to approve/reject was via Telegram/Slack/Discord chat commands or a direct POST to the gateway server.
+- ui: `approveFeedback(id)` and `rejectFeedback(id, reason?)` actions added to `feedbackStore`. Both call the new endpoints and refresh the list on success.
+- ui: `Feedback.vue` — approve/reject buttons appear inline for rows with status `pr_open` or `merge_failed`. Buttons disable during the in-flight request; errors surface below the history title.
+- ui: `Dashboard.vue` — `gdrive` and `onedrive` added to the backend dropdown. The worker has supported both since v1.1.0 but the UI form omitted them.
+- Tests: 7 new API tests (approve success/409/404, reject success/no-reason/409/404). ui: 58 tests. Total: 480.
+
 ## v1.8.0 — gateway event alignment
 
 - evolution.ts: all `publish('ouro_notify', ...)` calls in the evolution loop used `feedbackId` as the event field name, but the gateway expected `id` — every Telegram/Slack/Discord notification for evolution proposals showed `/approve undefined`. Fixed: all five publish calls now use `id`.

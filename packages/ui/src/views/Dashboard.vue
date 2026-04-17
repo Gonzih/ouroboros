@@ -82,6 +82,8 @@ async function submitTask(): Promise<void> {
             <option value="git">git</option>
             <option value="local">local</option>
             <option value="s3">s3</option>
+            <option value="gdrive">gdrive</option>
+            <option value="onedrive">onedrive</option>
           </select>
           <input v-model="taskTarget" placeholder="target (repo url, path, bucket)" class="flex-1" />
           <button :disabled="taskSubmitting || !taskInstructions.trim() || !taskTarget.trim()" @click="submitTask">
