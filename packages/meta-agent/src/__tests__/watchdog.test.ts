@@ -16,7 +16,7 @@ vi.mock('node:child_process', () => ({
 
 import { spawn } from 'node:child_process'
 import { getDb, log, publish, enqueue, unregisterProcess, getStaleJobs, registerProcess } from '@ouroboros/core'
-import { watchdogTick, makeMetaAgentState } from '../loops/watchdog.js'
+import { watchdogTick, makeMetaAgentState, watchdogLoop } from '../loops/watchdog.js'
 import type { MetaAgentState } from '../loops/watchdog.js'
 
 const mockSpawn = vi.mocked(spawn)
@@ -240,6 +240,27 @@ describe('makeMetaAgentState', () => {
   it('returns an object with restartService method', () => {
     const state = makeMetaAgentState()
     expect(typeof state.restartService).toBe('function')
+  })
+})
+
+describe('watchdogLoop', () => {
+  it('calls watchdogTick after the sleep interval elapses', async () => {
+    vi.useFakeTimers()
+    mockGetStaleJobs.mockResolvedValue([])
+    const mockDbFn = vi.fn().mockResolvedValue([])
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+    const state: MetaAgentState = { restartService: vi.fn() }
+
+    void watchdogLoop(state)
+
+    // Before any timer fires: watchdogTick has not run yet
+    expect(mockGetStaleJobs).not.toHaveBeenCalled()
+
+    // Advance past the default 60 s interval (WATCHDOG_INTERVAL_MS = 60000)
+    await vi.advanceTimersByTimeAsync(60_001)
+
+    expect(mockGetStaleJobs).toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })
 

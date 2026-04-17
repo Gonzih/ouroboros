@@ -383,4 +383,47 @@ describe('worker-dispatch', () => {
     )
     delete process.env['OURO_MAX_WORKERS']
   })
+
+  it('falls back to import.meta.url path when OURO_REPO_ROOT is not set', async () => {
+    const savedRoot = process.env['OURO_REPO_ROOT']
+    delete process.env['OURO_REPO_ROOT']
+    process.env['OURO_MAX_WORKERS'] = '100'
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 61n,
+      message: { id: 'job-fallback-path', backend: 'local', target: '/tmp', instructions: 'go' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+    const workerPath = (mockSpawn.mock.calls[0]![1] as string[])[0]!
+    expect(workerPath).toContain('worker')
+    expect(workerPath).toContain('dist')
+    if (savedRoot === undefined) delete process.env['OURO_REPO_ROOT']
+    else process.env['OURO_REPO_ROOT'] = savedRoot
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
+  it('writes to stderr when insertOutputLine db insert fails', async () => {
+    process.env['OURO_MAX_WORKERS'] = '100'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 62n,
+      message: { id: 'job-output-err', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+
+    const rlMock = mockCreateInterface.mock.results[0]?.value as { on: ReturnType<typeof vi.fn> }
+    const lineCbCall = rlMock.on.mock.calls.find(([e]: [string]) => e === 'line')
+    const lineCb = lineCbCall![1] as (line: string) => void
+
+    mockDb.mockRejectedValueOnce(new Error('db write failed'))
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    lineCb('output line that triggers db failure')
+    await flush(10)
+
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('failed to insert output'))
+    stderrSpy.mockRestore()
+    delete process.env['OURO_MAX_WORKERS']
+  })
 })

@@ -20,7 +20,7 @@ vi.mock('../claude.js', () => ({
 
 import { spawnSync } from 'node:child_process'
 import { dequeue, ack, nack, getDb, log, publish, releaseLock } from '@ouroboros/core'
-import { processOneFeedback, pollForApproval } from '../loops/evolution.js'
+import { processOneFeedback, pollForApproval, startEvolution } from '../loops/evolution.js'
 
 const mockDequeue = vi.mocked(dequeue)
 const mockAck = vi.mocked(ack)
@@ -301,6 +301,40 @@ describe('pollForApproval', () => {
       type: 'rebuild_failed',
     }))
     expect(exitSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('startEvolution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('calls processOneFeedback immediately on startup', async () => {
+    mockDequeue.mockResolvedValue(null)
+
+    void startEvolution()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(mockDequeue).toHaveBeenCalledWith('ouro_feedback', expect.any(Number))
+  })
+
+  it('logs unhandled errors from processOneFeedback without crashing', async () => {
+    mockDequeue.mockRejectedValueOnce(new Error('unexpected boom'))
+
+    void startEvolution()
+    // Drain: dequeue rejects → processOneFeedback throws → .catch fires → log resolves
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:evolution',
+      expect.stringContaining('unhandled error in evolution loop'),
+    )
   })
 })
 
