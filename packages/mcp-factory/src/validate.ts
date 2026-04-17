@@ -73,6 +73,16 @@ At the very end of your response, write one of these markers on its own line:
 OPERATIONAL — all tools worked correctly
 PARTIAL — some tools worked, others failed
 FAILED — could not connect or no tools worked`,
+
+  gdrive: `You have access to a Google Drive MCP server. Test it as follows:
+1. List all available tools from the MCP server
+2. Use a tool to list or search for files in Google Drive
+3. Report which tools you found and whether they worked
+
+At the very end of your response, write one of these markers on its own line:
+OPERATIONAL — all tools worked correctly
+PARTIAL — some tools worked, others failed
+FAILED — could not connect to Google Drive or no tools worked`,
 }
 
 const DEFAULT_PROMPT = `You have access to an MCP server. Test it as follows:

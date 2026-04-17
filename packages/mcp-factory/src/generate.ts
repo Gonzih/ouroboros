@@ -61,8 +61,19 @@ export function generateConfig(scheme: string, connectionString: string): McpSer
         args: ['-y', '@modelcontextprotocol/server-fetch', connectionString],
       }
 
+    case 'gdrive': {
+      // gdrive:///path/to/service-account.json → credentials file for Google service account auth
+      // Obtain a service account JSON from Google Cloud Console (IAM → Service Accounts → Keys)
+      // and share your Drive files/folders with the service account email.
+      const credPath = connectionString.replace(/^gdrive:\/\//, '')
+      return {
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-gdrive'],
+        env: { GOOGLE_APPLICATION_CREDENTIALS: credPath },
+      }
+    }
+
     case 's3':
-    case 'gdrive':
     case 'onedrive':
       throw new StubError(scheme)
 

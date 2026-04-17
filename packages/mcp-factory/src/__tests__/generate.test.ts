@@ -82,8 +82,22 @@ describe('generateConfig', () => {
     })
   })
 
+  describe('gdrive scheme', () => {
+    it('returns gdrive MCP server config', () => {
+      const config = generateConfig('gdrive', 'gdrive:///home/user/sa.json')
+      expect(config.command).toBe('npx')
+      expect(config.args).toContain('@modelcontextprotocol/server-gdrive')
+      expect(config.env?.['GOOGLE_APPLICATION_CREDENTIALS']).toBe('/home/user/sa.json')
+    })
+
+    it('strips gdrive:// prefix from credentials path', () => {
+      const config = generateConfig('gdrive', 'gdrive:///etc/sa-credentials.json')
+      expect(config.env?.['GOOGLE_APPLICATION_CREDENTIALS']).toBe('/etc/sa-credentials.json')
+    })
+  })
+
   describe('stub schemes', () => {
-    it.each(['s3', 'gdrive', 'onedrive'])('throws StubError for %s', (scheme) => {
+    it.each(['s3', 'onedrive'])('throws StubError for %s', (scheme) => {
       expect(() => generateConfig(scheme, `${scheme}://example`)).toThrow(StubError)
     })
   })

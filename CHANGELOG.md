@@ -1,3 +1,10 @@
+## v2.1.0 — Google Drive MCP backend
+
+- mcp-factory: `gdrive://` scheme is now fully implemented. `generateConfig('gdrive', 'gdrive:///path/to/sa.json')` returns an `npx @modelcontextprotocol/server-gdrive` config with `GOOGLE_APPLICATION_CREDENTIALS` set to the credentials file path extracted from the connection string. Previously all three storage stubs (s3, gdrive, onedrive) threw `StubError`; gdrive now works end-to-end through registration, validation, and Claude tool access.
+- mcp-factory: `gdrive` validation prompt added to `VALIDATION_PROMPTS` — instructs the Claude validation subprocess to list Drive tools and attempt a file listing, giving accurate OPERATIONAL/PARTIAL/FAILED classification.
+- `.env.example`: `GOOGLE_APPLICATION_CREDENTIALS` documented with service account setup instructions.
+- Tests: 2 new gdrive tests in `generate.test.ts`; stub-scheme list trimmed to `['s3', 'onedrive']`. mcp-factory: 50 tests. Total: 484.
+
 ## v2.0.0 — live log push via WebSocket
 
 - core: `log()` now uses `INSERT ... RETURNING id, ts` and publishes `ouro_notify { type: 'log_entry', id, source, message, ts }` after every write. Log entries are now live-pushed to WebSocket clients instead of relying on the 5-second poll in `Logs.vue`.

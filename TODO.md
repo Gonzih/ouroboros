@@ -173,6 +173,13 @@
 - [x] chore: bump all package versions to 2.0.0 (core, gateway, mcp-factory, mcp-server, meta-agent, worker, ui)
 - [x] Tests: 3 new core/log tests. core: 54 tests. Total: 483
 
+## v2.1.0 — Google Drive MCP backend ✅ complete
+
+- [x] mcp-factory: implement `gdrive` scheme in `generateConfig` — uses `@modelcontextprotocol/server-gdrive` with `GOOGLE_APPLICATION_CREDENTIALS` env var
+- [x] mcp-factory: add `gdrive` validation prompt to `VALIDATION_PROMPTS` in `validate.ts`
+- [x] mcp-factory: 2 new `generateConfig` tests for gdrive; remove gdrive from stub scheme list
+- [x] `.env.example`: document `GOOGLE_APPLICATION_CREDENTIALS` with setup instructions
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action
