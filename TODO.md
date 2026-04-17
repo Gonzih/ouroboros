@@ -219,6 +219,11 @@
 - [x] spec/07-open-questions.md: OneDrive moved from stubbed to fully implemented
 - [x] `.env.example`: document `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` with Azure AD setup instructions
 
+## v2.3.1 — housekeeping ✅ complete
+
+- [x] meta-agent/coordinator: bump version string from v2.1.3 → v2.3.0
+- [x] spec/06-mcp-factory.md: add missing onedrive config example to Generated Configs section
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

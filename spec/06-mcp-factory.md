@@ -158,6 +158,17 @@ interface ValidationResult {
   args: ["-y", "@modelcontextprotocol/server-gdrive"],
   env: { GOOGLE_APPLICATION_CREDENTIALS: "/path/to/service-account.json" }
 }
+
+// onedrive://path — Azure AD service principal credentials from env
+{
+  command: "npx",
+  args: ["-y", "@pnp/cli-microsoft365-mcp-server"],
+  env: {
+    MICROSOFT_CLIENT_ID: "...",
+    MICROSOFT_CLIENT_SECRET: "...",
+    MICROSOFT_TENANT_ID: "..."
+  }
+}
 ```
 
 ## claude.json Patching (cross-platform)
