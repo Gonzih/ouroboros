@@ -304,6 +304,25 @@ describe('ChannelAdapter implementations', () => {
         expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('Feedback queued'))
       })
 
+      it('handles /task command and queues task', async () => {
+        const mockDb = vi.fn().mockResolvedValue([])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/task git https://github.com/x/y Add tests' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({
+          backend: 'git',
+          target: 'https://github.com/x/y',
+          instructions: 'Add tests',
+        }))
+        expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('Task queued'))
+      })
+
       it('returns {} when signature buffers have different lengths', async () => {
         const adapter = new SlackAdapter('token', 'chan', secret)
         // A valid-format sig but intentionally short
@@ -640,6 +659,40 @@ describe('ChannelAdapter implementations', () => {
       }))
       expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Feedback queued'))
     })
+
+    it('/task full form queues task and confirms', async () => {
+      const mockDb = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']!({ text: '/task git https://github.com/acme/repo Build a test suite' })
+      await flush()
+      expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({
+        backend: 'git',
+        target: 'https://github.com/acme/repo',
+        instructions: 'Build a test suite',
+      }))
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Task queued'))
+    })
+
+    it('/task short form uses OURO_REPO_ROOT', async () => {
+      process.env['OURO_REPO_ROOT'] = '/tmp/repo'
+      const mockDb = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']!({ text: '/task Write unit tests' })
+      await flush()
+      expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({
+        backend: 'git',
+        target: '/tmp/repo',
+        instructions: 'Write unit tests',
+      }))
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Task queued'))
+      delete process.env['OURO_REPO_ROOT']
+    })
   })
 
   describe('DiscordAdapter', () => {
@@ -796,6 +849,33 @@ describe('ChannelAdapter implementations', () => {
           status: 'pending',
         }))
         expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('Feedback queued')
+      })
+
+      it('handles /task command and queues task', async () => {
+        const mockDb = vi.fn().mockResolvedValue([])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        process.env['OURO_REPO_ROOT'] = '/tmp/repo'
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({
+          type: 2,
+          data: {
+            name: 'task',
+            options: [
+              { name: 'instructions', value: 'Add error handling' },
+              { name: 'backend', value: 'git' },
+              { name: 'target', value: 'https://github.com/x/y' },
+            ],
+          },
+        })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({
+          backend: 'git',
+          target: 'https://github.com/x/y',
+          instructions: 'Add error handling',
+        }))
+        expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('Task queued')
+        delete process.env['OURO_REPO_ROOT']
       })
 
       it('returns PONG for unknown interaction type', async () => {

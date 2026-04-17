@@ -120,6 +120,19 @@ export class DiscordAdapter implements ChannelAdapter {
         const content = await this.handleFeedback(firstOption)
         return { type: 4, data: { content } }
       }
+      if (commandName === 'task') {
+        // options: backend (optional), target (optional), instructions (required)
+        const optMap = Object.fromEntries(
+          (Array.isArray(data?.['options']) ? (data['options'] as Array<Record<string, unknown>>) : [])
+            .map(o => [o['name'] as string, o['value'] as string])
+        )
+        const content = await this.handleTask(
+          optMap['backend'] ?? '',
+          optMap['target'] ?? '',
+          optMap['instructions'] ?? firstOption,
+        )
+        return { type: 4, data: { content } }
+      }
     }
 
     // Unknown interaction type — acknowledge with PONG to avoid Discord timeout errors
@@ -197,6 +210,31 @@ export class DiscordAdapter implements ChannelAdapter {
     } catch (err: unknown) {
       await log('gateway:discord', `jobs error: ${String(err)}`)
       return `Error fetching jobs: ${String(err)}`
+    }
+  }
+
+  private async handleTask(backend: string, target: string, instructions: string): Promise<string> {
+    if (!instructions) return 'Usage: /task instructions:<text> [backend:<type>] [target:<url>]'
+    const knownBackends = ['git', 'local', 's3', 'gdrive', 'onedrive']
+    const resolvedBackend = backend && knownBackends.includes(backend) ? backend : 'git'
+    let resolvedTarget = target
+    if (!resolvedTarget) {
+      const repoRoot = process.env['OURO_REPO_ROOT']
+      if (!repoRoot) return 'target is required or set OURO_REPO_ROOT as default'
+      resolvedTarget = repoRoot
+    }
+    try {
+      const db = getDb()
+      const id = crypto.randomUUID()
+      await db`
+        INSERT INTO ouro_jobs (id, description, backend, target, status, instructions)
+        VALUES (${id}, ${instructions}, ${resolvedBackend}, ${resolvedTarget}, 'pending', ${instructions})
+      `
+      await enqueue('ouro_tasks', { id, backend: resolvedBackend, target: resolvedTarget, instructions })
+      return `Task queued: ${id}`
+    } catch (err: unknown) {
+      await log('gateway:discord', `task error: ${String(err)}`)
+      return `Error queuing task: ${String(err)}`
     }
   }
 

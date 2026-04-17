@@ -76,6 +76,8 @@ export class TelegramAdapter implements ChannelAdapter {
     } else if (trimmed.startsWith('/feedback ')) {
       const text = trimmed.slice('/feedback '.length).trim()
       if (text) await this.handleFeedback(text)
+    } else if (trimmed.startsWith('/task ')) {
+      await this.handleTask(trimmed.slice('/task '.length).trim())
     }
     // other text: silently ignore — gateway is not a free-form input handler
   }
@@ -163,6 +165,41 @@ export class TelegramAdapter implements ChannelAdapter {
     } catch (err: unknown) {
       await log('gateway:telegram', `jobs error: ${String(err)}`)
       await this.send(`Error fetching jobs: ${String(err)}`)
+    }
+  }
+
+  private async handleTask(args: string): Promise<void> {
+    // /task <backend> <target> <instructions>  — explicit form
+    // /task <instructions>                     — short form: backend=git, target=OURO_REPO_ROOT
+    const parts = args.split(/\s+/)
+    let backend: string, target: string, instructions: string
+    const knownBackends = ['git', 'local', 's3', 'gdrive', 'onedrive']
+    if (parts.length >= 3 && knownBackends.includes(parts[0] ?? '')) {
+      backend = parts[0]!
+      target = parts[1]!
+      instructions = parts.slice(2).join(' ')
+    } else {
+      const repoRoot = process.env['OURO_REPO_ROOT']
+      if (!repoRoot) {
+        await this.send('Usage: /task <backend> <target> <instructions>\nOr set OURO_REPO_ROOT for short form: /task <instructions>')
+        return
+      }
+      backend = 'git'
+      target = repoRoot
+      instructions = args
+    }
+    try {
+      const db = getDb()
+      const id = randomUUID()
+      await db`
+        INSERT INTO ouro_jobs (id, description, backend, target, status, instructions)
+        VALUES (${id}, ${instructions}, ${backend}, ${target}, 'pending', ${instructions})
+      `
+      await enqueue('ouro_tasks', { id, backend, target, instructions })
+      await this.send(`Task queued: ${id}`)
+    } catch (err: unknown) {
+      await log('gateway:telegram', `task error: ${String(err)}`)
+      await this.send(`Error queuing task: ${String(err)}`)
     }
   }
 

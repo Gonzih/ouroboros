@@ -105,6 +105,41 @@ export class SlackAdapter implements ChannelAdapter {
     } else if (text.startsWith('/feedback ')) {
       const feedbackText = text.slice('/feedback '.length).trim()
       if (feedbackText) await this.handleFeedback(feedbackText)
+    } else if (text.startsWith('/task ')) {
+      await this.handleTask(text.slice('/task '.length).trim())
+    }
+  }
+
+  private async handleTask(args: string): Promise<void> {
+    const parts = args.split(/\s+/)
+    const knownBackends = ['git', 'local', 's3', 'gdrive', 'onedrive']
+    let backend: string, target: string, instructions: string
+    if (parts.length >= 3 && knownBackends.includes(parts[0] ?? '')) {
+      backend = parts[0]!
+      target = parts[1]!
+      instructions = parts.slice(2).join(' ')
+    } else {
+      const repoRoot = process.env['OURO_REPO_ROOT']
+      if (!repoRoot) {
+        await this.send('Usage: /task <backend> <target> <instructions>\nOr set OURO_REPO_ROOT for short form: /task <instructions>')
+        return
+      }
+      backend = 'git'
+      target = repoRoot
+      instructions = args
+    }
+    try {
+      const db = getDb()
+      const id = randomUUID()
+      await db`
+        INSERT INTO ouro_jobs (id, description, backend, target, status, instructions)
+        VALUES (${id}, ${instructions}, ${backend}, ${target}, 'pending', ${instructions})
+      `
+      await enqueue('ouro_tasks', { id, backend, target, instructions })
+      await this.send(`Task queued: ${id}`)
+    } catch (err: unknown) {
+      await log('gateway:slack', `task error: ${String(err)}`)
+      await this.send(`Error queuing task: ${String(err)}`)
     }
   }
 
