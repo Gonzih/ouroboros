@@ -200,7 +200,7 @@ export async function processOneFeedback(): Promise<void> {
 
     await db`
       UPDATE ouro_feedback
-      SET status = 'pr_open', pr_url = ${prUrl}
+      SET status = 'pr_open', pr_url = ${prUrl}, queue_msg_id = ${msgId.toString()}::bigint
       WHERE id = ${feedback.id}
     `
 
@@ -226,6 +226,20 @@ export async function processOneFeedback(): Promise<void> {
 }
 
 export async function startEvolution(): Promise<void> {
+  // On restart, resume approval polling for any PRs that were in-flight before the crash
+  const repoRoot = process.env['OURO_REPO_ROOT']
+  if (repoRoot) {
+    const db = getDb()
+    const pending = await db<{ id: string; pr_url: string; queue_msg_id: string }[]>`
+      SELECT id, pr_url, queue_msg_id FROM ouro_feedback
+      WHERE status = 'pr_open' AND queue_msg_id IS NOT NULL
+    `
+    for (const row of pending) {
+      await log('meta-agent:evolution', `resuming approval poll for feedback ${row.id} (PR ${row.pr_url})`)
+      void pollForApproval(row.id, row.pr_url ?? '', BigInt(row.queue_msg_id), repoRoot)
+    }
+  }
+
   const run = (): void => {
     void processOneFeedback()
       .catch((err) =>
