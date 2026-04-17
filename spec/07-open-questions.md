@@ -68,8 +68,7 @@ No component library. Custom CSS with dark terminal aesthetic. Components are in
 This is the core differentiator — we prove the data connection works before claiming it does.
 
 ### Supported schemes v1 ✅ DECIDED
-Postgres, filesystem, GitHub, SQLite, HTTP/HTTPS, Google Drive, S3 — fully implemented.
-OneDrive — stubbed (implement via Ouroboros feedback loop).
+Postgres, filesystem, GitHub, SQLite, HTTP/HTTPS, Google Drive, S3, OneDrive — all fully implemented.
 
 ---
 

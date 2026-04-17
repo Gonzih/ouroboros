@@ -145,9 +145,53 @@ describe('generateConfig', () => {
     })
   })
 
-  describe('stub schemes', () => {
-    it.each(['onedrive'])('throws StubError for %s', (scheme) => {
-      expect(() => generateConfig(scheme, `${scheme}://example`)).toThrow(StubError)
+  describe('onedrive scheme', () => {
+    const savedClientId = process.env['MICROSOFT_CLIENT_ID']
+    const savedClientSecret = process.env['MICROSOFT_CLIENT_SECRET']
+    const savedTenantId = process.env['MICROSOFT_TENANT_ID']
+
+    afterEach(() => {
+      if (savedClientId === undefined) delete process.env['MICROSOFT_CLIENT_ID']
+      else process.env['MICROSOFT_CLIENT_ID'] = savedClientId
+      if (savedClientSecret === undefined) delete process.env['MICROSOFT_CLIENT_SECRET']
+      else process.env['MICROSOFT_CLIENT_SECRET'] = savedClientSecret
+      if (savedTenantId === undefined) delete process.env['MICROSOFT_TENANT_ID']
+      else process.env['MICROSOFT_TENANT_ID'] = savedTenantId
+    })
+
+    it('returns cli-microsoft365-mcp-server config with credentials from env', () => {
+      process.env['MICROSOFT_CLIENT_ID'] = 'app-id-123'
+      process.env['MICROSOFT_CLIENT_SECRET'] = 'secret-abc'
+      process.env['MICROSOFT_TENANT_ID'] = 'tenant-xyz'
+      const config = generateConfig('onedrive', 'onedrive://Documents/data')
+      expect(config.command).toBe('npx')
+      expect(config.args).toContain('@pnp/cli-microsoft365-mcp-server')
+      expect(config.env?.['MICROSOFT_CLIENT_ID']).toBe('app-id-123')
+      expect(config.env?.['MICROSOFT_CLIENT_SECRET']).toBe('secret-abc')
+      expect(config.env?.['MICROSOFT_TENANT_ID']).toBe('tenant-xyz')
+    })
+
+    it('returns no env when no Microsoft credentials are set', () => {
+      delete process.env['MICROSOFT_CLIENT_ID']
+      delete process.env['MICROSOFT_CLIENT_SECRET']
+      delete process.env['MICROSOFT_TENANT_ID']
+      const config = generateConfig('onedrive', 'onedrive://Documents')
+      expect(config.env).toBeUndefined()
+    })
+
+    it('passes partial credentials when only some vars are set', () => {
+      delete process.env['MICROSOFT_CLIENT_ID']
+      delete process.env['MICROSOFT_CLIENT_SECRET']
+      process.env['MICROSOFT_TENANT_ID'] = 'tenant-only'
+      const config = generateConfig('onedrive', 'onedrive://Docs')
+      expect(config.env?.['MICROSOFT_TENANT_ID']).toBe('tenant-only')
+      expect(config.env?.['MICROSOFT_CLIENT_ID']).toBeUndefined()
+    })
+  })
+
+  describe('unknown scheme', () => {
+    it('throws StubError for an unrecognised scheme', () => {
+      expect(() => generateConfig('ftp', 'ftp://example')).toThrow(StubError)
     })
   })
 })

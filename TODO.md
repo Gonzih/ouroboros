@@ -210,6 +210,15 @@
 - [x] spec/06-mcp-factory.md: s3 row updated to v1 with correct package (`mcp-server-s3`) and config example
 - [x] spec/07-open-questions.md: S3 moved from stubbed to fully implemented
 
+## v2.3.0 — OneDrive MCP backend ✅ complete
+
+- [x] mcp-factory: implement `onedrive` scheme in `generateConfig` — uses `@pnp/cli-microsoft365-mcp-server` with Azure service principal credentials (`MICROSOFT_CLIENT_ID`/`SECRET`/`TENANT_ID` from env)
+- [x] mcp-factory: add `onedrive` validation prompt to `VALIDATION_PROMPTS` in `validate.ts`
+- [x] mcp-factory: 3 new `generateConfig` tests for onedrive; remove onedrive from stub scheme list
+- [x] spec/06-mcp-factory.md: onedrive row updated to v1 with correct package and auth model
+- [x] spec/07-open-questions.md: OneDrive moved from stubbed to fully implemented
+- [x] `.env.example`: document `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` with Azure AD setup instructions
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

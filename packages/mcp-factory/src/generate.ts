@@ -92,8 +92,23 @@ export function generateConfig(scheme: string, connectionString: string): McpSer
       }
     }
 
-    case 'onedrive':
-      throw new StubError(scheme)
+    case 'onedrive': {
+      // onedrive://path — Microsoft 365 service principal credentials from env
+      // Register an app in Azure AD with Files.Read.All / Sites.Read.All permissions,
+      // then set MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_TENANT_ID.
+      const env: Record<string, string> = {}
+      const clientId = process.env['MICROSOFT_CLIENT_ID']
+      const clientSecret = process.env['MICROSOFT_CLIENT_SECRET']
+      const tenantId = process.env['MICROSOFT_TENANT_ID']
+      if (clientId !== undefined) env['MICROSOFT_CLIENT_ID'] = clientId
+      if (clientSecret !== undefined) env['MICROSOFT_CLIENT_SECRET'] = clientSecret
+      if (tenantId !== undefined) env['MICROSOFT_TENANT_ID'] = tenantId
+      return {
+        command: 'npx',
+        args: ['-y', '@pnp/cli-microsoft365-mcp-server'],
+        ...(Object.keys(env).length > 0 ? { env } : {}),
+      }
+    }
 
     default:
       throw new StubError(scheme)

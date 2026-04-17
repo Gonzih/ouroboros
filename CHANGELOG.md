@@ -1,3 +1,18 @@
+## v2.3.0 — OneDrive MCP backend
+
+- mcp-factory: `onedrive://` scheme is now fully implemented. `generateConfig('onedrive', 'onedrive://path')` returns a `@pnp/cli-microsoft365-mcp-server` config with `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, and `MICROSOFT_TENANT_ID` passed through from env (standard Azure AD service principal credentials). Previously `onedrive` threw `StubError`; it now works end-to-end through registration, validation, and Claude tool access.
+- mcp-factory: `onedrive` validation prompt added to `VALIDATION_PROMPTS` — instructs the Claude validation subprocess to list OneDrive/SharePoint tools and attempt a file listing, giving accurate OPERATIONAL/PARTIAL/FAILED classification.
+- `.env.example`: `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` documented with Azure AD app registration setup instructions.
+- Tests: 3 new onedrive tests in `generate.test.ts`; stub-scheme list is now empty — all documented schemes are implemented. mcp-factory: 55 tests. Total: 502.
+
+## v2.2.0 — S3 MCP backend
+
+- mcp-factory: `s3://` scheme is now fully implemented. `generateConfig('s3', 's3://bucket/prefix')` returns a `mcp-server-s3` config with AWS credentials passed through from env (`AWS_ACCESS_KEY_ID`/`SECRET`/`REGION` or `AWS_PROFILE`; falls back to `~/.aws/credentials` and IAM role chain when no env vars set). Previously all three storage stubs (s3, gdrive, onedrive) threw `StubError`; s3 and gdrive are now fully implemented and onedrive was the remaining stub.
+- mcp-factory: `s3` validation prompt added to `VALIDATION_PROMPTS` in `validate.ts` — instructs the Claude validation subprocess to use `list_buckets` and report OPERATIONAL/PARTIAL/FAILED.
+- spec/06-mcp-factory.md: s3 row updated to v1 with correct package (`mcp-server-s3`) and config example.
+- spec/07-open-questions.md: S3 moved from stubbed to fully implemented.
+- Tests: 3 new s3 tests in `generate.test.ts`; stub-scheme list trimmed to `['onedrive']`. mcp-factory: 52 tests. Total: 499.
+
 ## v2.1.3 — Slack command parity
 
 - gateway: `SlackAdapter` now supports `/status`, `/jobs`, and `/mcp` commands — Slack reaches full parity with Telegram and Discord. All three adapters now expose the same 8 commands: `/approve`, `/reject`, `/status`, `/jobs`, `/mcp`, `/logs`, `/feedback`, `/task`.

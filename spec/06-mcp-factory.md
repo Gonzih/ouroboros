@@ -16,7 +16,7 @@ Data never leaves the customer's machine. The MCP server runs locally. Claude Co
 | `sqlite:///path` | `sqlite:///app.db` | `@modelcontextprotocol/server-sqlite` | v1 |
 | `s3://bucket/prefix` | `s3://corp-data/docs/` | `mcp-server-s3` | v1 |
 | `gdrive:///path/to/sa.json` | `gdrive:///etc/sa.json` | `@modelcontextprotocol/server-gdrive` | v1 |
-| `onedrive://path` | `onedrive://Documents/data` | rclone-based | stub |
+| `onedrive://path` | `onedrive://Documents/data` | `@pnp/cli-microsoft365-mcp-server` | v1 |
 | `http://` / `https://` | `https://api.internal/v1` | `@modelcontextprotocol/server-fetch` | v1 |
 
 ## HTTP API (port 7703)
