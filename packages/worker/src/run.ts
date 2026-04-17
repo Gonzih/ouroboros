@@ -110,9 +110,11 @@ export async function run(): Promise<void> {
       'If you cannot complete it, respond with exactly: TASK_FAILED:{reason}',
     ].join('\n')
 
-    // Use --continue when resuming an interrupted session (sessionId was set by prior run)
+    // Use --continue when resuming an interrupted session (sessionId was set by prior run).
+    // --print is required even on resume so claude exits after responding rather than waiting for stdin.
+    const resumePrompt = 'Continue the task. When done, respond with exactly: TASK_DONE\nIf you cannot complete it, respond with exactly: TASK_FAILED:{reason}'
     const claudeArgs: string[] = existingSessionId !== undefined
-      ? ['--continue', '--dangerously-skip-permissions']
+      ? ['--continue', '--print', '--dangerously-skip-permissions', '-p', resumePrompt]
       : ['--print', '--dangerously-skip-permissions', '-p', prompt]
 
     const outputLines: string[] = []
