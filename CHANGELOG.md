@@ -1,3 +1,12 @@
+## v1.0.1 — merge_failed recovery + version bump housekeeping
+
+- meta-agent/evolution: `runClaude` now throws on non-zero exit code (was silently treating failures as success); `pollForApproval` marks `merge_failed` status and returns early instead of falling through to `applied` state and triggering a rebuild/restart on a failed merge.
+- mcp-server/feedback: `approve_evolution` now accepts jobs with `merge_failed` status (in addition to `pr_open`) — coordinator can retry a merge without needing a new PR cycle; `list_feedback` status enum includes `merge_failed`.
+- meta-agent/coordinator: coordinator prompt instructs Claude to run `gh pr merge` after approving and to retry on `merge_failed` status.
+- ui: `StatusBadge` renders `merge_failed` state in red; `useWebSocket` routes `evolution_proposed` and `evolution_merge_failed` events to `feedbackStore`.
+- All six publishable packages (core, gateway, mcp-factory, meta-agent, ui, worker) bumped to `1.0.0` — version fields were missed during the v0.9.0 and v1.0.0 release cycles.
+- Tests: 4 new tests (merge_failed retry + list_feedback filter in mcp-server; merge_failed branch in coordinator). Total: 209 tests.
+
 ## v1.0.0 — Schedule management in Control MCP
 
 - mcp-server: `packages/mcp-server/src/tools/schedules.ts` — four new MCP tools expose schedule management to Claude: `list_schedules` (list all schedules), `create_schedule` (insert with cron validation via croner, computes `next_run_at`), `toggle_schedule` (flip enabled state), `delete_schedule` (remove by ID). Returns structured JSON; `create_schedule` returns `{ error }` on invalid cron expression without throwing.

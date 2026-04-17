@@ -91,6 +91,10 @@
 - [x] mcp-server: schedule tools registered in `allTools` and server version bumped to `1.0.0`
 - [x] Tests: 8 schedule tool tests. Total: 205 tests
 
+## v1.0.1 — Version bump housekeeping ✅ complete
+
+- [x] Bump all package versions (core, gateway, mcp-factory, worker, meta-agent, ui) from 0.8.0 to 1.0.0 — were missed during v0.9.0 and v1.0.0 releases
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action
