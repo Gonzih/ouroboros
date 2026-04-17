@@ -1,9 +1,16 @@
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { log } from '@ouroboros/core'
 import { findClaudeBin } from './claude.js'
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isValidUUID(id: string): boolean {
+  return UUID_REGEX.test(id)
+}
 
 function getSessionFile(): string {
   return join(process.env['OURO_REPO_ROOT'] ?? '.', '.ouro-session')
@@ -21,6 +28,11 @@ export function saveSessionId(id: string): void {
   writeFileSync(getSessionFile(), id)
 }
 
+export function clearSessionId(): void {
+  const file = getSessionFile()
+  if (existsSync(file)) unlinkSync(file)
+}
+
 export function buildCoordinatorPrompt(): string {
   return `You are the Ouroboros coordinator. You have access to the ouroboros MCP server which gives you full control over the system.
 
@@ -33,7 +45,7 @@ Your job:
 6. Schedules — list_schedules() to see recurring job templates. create_schedule(), update_schedule(), toggle_schedule(), delete_schedule() to manage them on user request or as needed.
 
 Be autonomous. Act on what needs action. Check state periodically. When you finish a cycle, wait a moment then check again.
-The system is Ouroboros v2.3.8. Running with --continue so your context persists across restarts.`
+The system is Ouroboros v2.3.9. Running with --resume so your session persists across restarts.`
 }
 
 export async function spawnCoordinator(): Promise<ChildProcess> {
@@ -48,12 +60,18 @@ export async function spawnCoordinator(): Promise<ChildProcess> {
     '--print',
   ]
 
-  if (sessionId) {
-    args.push('--continue', '-p', 'Continue your coordination work. Check system state and act on what needs attention.')
+  if (sessionId && isValidUUID(sessionId)) {
+    args.push('--resume', sessionId, '-p', 'Continue your coordination work. Check system state and act on what needs attention.')
     await log('meta-agent', `Resuming coordinator session ${sessionId}`)
+  } else if (sessionId) {
+    // Legacy 'started' marker — use --continue for backward compat
+    args.push('--continue', '-p', 'Continue your coordination work. Check system state and act on what needs attention.')
+    await log('meta-agent', 'Resuming coordinator session (upgrading to UUID tracking)')
   } else {
-    args.push('-p', buildCoordinatorPrompt())
-    await log('meta-agent', 'Starting new coordinator session')
+    const newUUID = randomUUID()
+    saveSessionId(newUUID)
+    args.push('--session-id', newUUID, '-p', buildCoordinatorPrompt())
+    await log('meta-agent', `Starting new coordinator session ${newUUID}`)
   }
 
   const claude = spawn(claudeBin, args, {
@@ -75,11 +93,6 @@ export async function spawnCoordinator(): Promise<ChildProcess> {
     // Claude CLI emits this warning on every non-TTY spawn; it's benign — filter it out
     if (text && !text.includes('no stdin data received')) void log('coordinator:err', text)
   })
-
-  // Mark that a session exists so future restarts use --continue
-  if (!sessionId) {
-    saveSessionId('started')
-  }
 
   return claude
 }

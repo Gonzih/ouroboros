@@ -4,7 +4,10 @@ import { startWorkerDispatch } from './loops/worker-dispatch.js'
 import { startEvolution } from './loops/evolution.js'
 import { startScheduler } from './loops/scheduler.js'
 import { watchdogLoop, makeMetaAgentState } from './loops/watchdog.js'
-import { spawnCoordinator } from './coordinator.js'
+import { spawnCoordinator, clearSessionId, loadSessionId, isValidUUID } from './coordinator.js'
+
+// Coordinator exits in under this many ms → assume the session UUID was invalid/expired
+const FAST_EXIT_THRESHOLD_MS = 10_000
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -12,11 +15,22 @@ function sleep(ms: number): Promise<void> {
 
 async function runCoordinatorLoop(): Promise<void> {
   while (true) {
+    const spawnedAt = Date.now()
     try {
       const proc = await spawnCoordinator()
       await new Promise<void>(resolve => proc.once('exit', () => resolve()))
     } catch (err) {
       await log('meta-agent', `Coordinator spawn error: ${String(err)}`)
+    }
+    // If a UUID-based session exited suspiciously fast, the session ID is probably
+    // stale (expired or never found). Clear it so the next cycle starts fresh.
+    const elapsed = Date.now() - spawnedAt
+    if (elapsed < FAST_EXIT_THRESHOLD_MS) {
+      const sid = loadSessionId()
+      if (sid && isValidUUID(sid)) {
+        await log('meta-agent', `Coordinator exited after ${elapsed}ms — clearing stale session ${sid}`)
+        clearSessionId()
+      }
     }
     await log('meta-agent', 'Coordinator exited — restarting in 5s')
     await sleep(5000)

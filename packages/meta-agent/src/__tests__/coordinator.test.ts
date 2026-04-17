@@ -4,6 +4,11 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn(),
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
+  unlinkSync: vi.fn(),
+}))
+
+vi.mock('node:crypto', () => ({
+  randomUUID: vi.fn().mockReturnValue('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'),
 }))
 
 vi.mock('@ouroboros/core', () => ({
@@ -18,14 +23,17 @@ vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
 }))
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { log } from '@ouroboros/core'
-import { loadSessionId, saveSessionId, buildCoordinatorPrompt, spawnCoordinator } from '../coordinator.js'
+import { loadSessionId, saveSessionId, clearSessionId, isValidUUID, buildCoordinatorPrompt, spawnCoordinator } from '../coordinator.js'
 
 const mockExists = vi.mocked(existsSync)
 const mockReadFile = vi.mocked(readFileSync)
 const mockWriteFile = vi.mocked(writeFileSync)
+const mockUnlink = vi.mocked(unlinkSync)
+const mockRandomUUID = vi.mocked(randomUUID)
 const mockSpawn = vi.mocked(spawn)
 const mockLog = vi.mocked(log)
 
@@ -99,6 +107,42 @@ describe('coordinator', () => {
     })
   })
 
+  describe('clearSessionId', () => {
+    it('deletes the session file when it exists', () => {
+      mockExists.mockReturnValue(true)
+      clearSessionId()
+      expect(mockUnlink).toHaveBeenCalledWith(expect.stringContaining('.ouro-session'))
+    })
+
+    it('does nothing when session file does not exist', () => {
+      mockExists.mockReturnValue(false)
+      clearSessionId()
+      expect(mockUnlink).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('isValidUUID', () => {
+    it('returns true for a valid lowercase UUID', () => {
+      expect(isValidUUID('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')).toBe(true)
+    })
+
+    it('returns true for a valid mixed-case UUID', () => {
+      expect(isValidUUID('AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE')).toBe(true)
+    })
+
+    it('returns false for the legacy started placeholder', () => {
+      expect(isValidUUID('started')).toBe(false)
+    })
+
+    it('returns false for an empty string', () => {
+      expect(isValidUUID('')).toBe(false)
+    })
+
+    it('returns false for a UUID with wrong segment lengths', () => {
+      expect(isValidUUID('aaaa-bbbb-cccc-dddd-eeeeeeeeeeee')).toBe(false)
+    })
+  })
+
   describe('buildCoordinatorPrompt', () => {
     it('returns a non-empty string', () => {
       const prompt = buildCoordinatorPrompt()
@@ -141,10 +185,10 @@ describe('coordinator', () => {
       expect(prompt).toContain('delete_mcp')
     })
 
-    it('mentions current version and --continue persistence', () => {
+    it('mentions current version and --resume persistence', () => {
       const prompt = buildCoordinatorPrompt()
       expect(prompt).toMatch(/Ouroboros v\d+\.\d+\.\d+/)
-      expect(prompt).toContain('--continue')
+      expect(prompt).toContain('--resume')
     })
 
     it('instructs coordinator to run gh pr merge after approving', () => {
@@ -191,23 +235,48 @@ describe('coordinator', () => {
       expect(args).toContain('--print')
     })
 
-    it('does not use --continue on first start (no session file)', async () => {
+    it('does not use --continue or --resume on first start (no session file)', async () => {
       mockExists.mockReturnValue(false)
       await spawnCoordinator()
       const call = mockSpawn.mock.calls[0]
       expect(call).toBeDefined()
       const args = call![1] as string[]
       expect(args).not.toContain('--continue')
+      expect(args).not.toContain('--resume')
     })
 
-    it('uses --continue when session file exists', async () => {
+    it('uses --session-id on first start with the generated UUID', async () => {
+      mockExists.mockReturnValue(false)
+      await spawnCoordinator()
+      const call = mockSpawn.mock.calls[0]
+      expect(call).toBeDefined()
+      const args = call![1] as string[]
+      const idx = args.indexOf('--session-id')
+      expect(idx).toBeGreaterThan(-1)
+      expect(args[idx + 1]).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
+    })
+
+    it('uses --resume when session file contains a valid UUID', async () => {
       mockExists.mockReturnValue(true)
-      mockReadFile.mockReturnValue('existing-session' as unknown as ReturnType<typeof readFileSync>)
+      mockReadFile.mockReturnValue('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' as unknown as ReturnType<typeof readFileSync>)
+      await spawnCoordinator()
+      const call = mockSpawn.mock.calls[0]
+      expect(call).toBeDefined()
+      const args = call![1] as string[]
+      expect(args).toContain('--resume')
+      expect(args).not.toContain('--continue')
+      expect(args).not.toContain('--session-id')
+    })
+
+    it('uses --continue when session file contains legacy started marker', async () => {
+      mockExists.mockReturnValue(true)
+      mockReadFile.mockReturnValue('started' as unknown as ReturnType<typeof readFileSync>)
       await spawnCoordinator()
       const call = mockSpawn.mock.calls[0]
       expect(call).toBeDefined()
       const args = call![1] as string[]
       expect(args).toContain('--continue')
+      expect(args).not.toContain('--resume')
     })
 
     it('passes the coordinator prompt on first start', async () => {
@@ -222,20 +291,26 @@ describe('coordinator', () => {
       expect(prompt).toContain('Ouroboros coordinator')
     })
 
-    it('saves a session marker on first start', async () => {
+    it('saves the generated UUID to the session file on first start', async () => {
       mockExists.mockReturnValue(false)
       await spawnCoordinator()
       expect(mockWriteFile).toHaveBeenCalledWith(
         expect.stringContaining('.ouro-session'),
-        expect.any(String),
+        'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       )
     })
 
-    it('does not overwrite session file when session already exists', async () => {
+    it('does not overwrite session file when a UUID session already exists', async () => {
       mockExists.mockReturnValue(true)
-      mockReadFile.mockReturnValue('my-session' as unknown as ReturnType<typeof readFileSync>)
+      mockReadFile.mockReturnValue('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' as unknown as ReturnType<typeof readFileSync>)
       await spawnCoordinator()
-      // saveSessionId only called if !sessionId — when session exists, no write
+      expect(mockWriteFile).not.toHaveBeenCalled()
+    })
+
+    it('does not overwrite session file when legacy started marker exists', async () => {
+      mockExists.mockReturnValue(true)
+      mockReadFile.mockReturnValue('started' as unknown as ReturnType<typeof readFileSync>)
+      await spawnCoordinator()
       expect(mockWriteFile).not.toHaveBeenCalled()
     })
 

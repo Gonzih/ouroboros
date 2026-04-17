@@ -1,3 +1,13 @@
+## v2.3.9 — fix: coordinator session UUID persistence
+
+- meta-agent/coordinator: On first spawn, generate a real UUID with `crypto.randomUUID()` and pass `--session-id <uuid>` to the claude subprocess. Previously wrote a `'started'` placeholder, so `--continue` resumed "the most recent session in cwd" rather than the specific coordinator session — fragile if any other claude session ran in that directory in between.
+- meta-agent/coordinator: On subsequent spawns, use `--resume <uuid>` when the session file contains a valid UUID. Legacy `'started'` markers still fall back to `--continue` for backward compat.
+- meta-agent/coordinator: Export `isValidUUID(id)` and `clearSessionId()` helpers.
+- meta-agent/index: `runCoordinatorLoop` detects fast exits (< 10 s) on UUID-based sessions and clears the session file — graceful recovery when a session UUID has expired or become invalid.
+- chore: cleared legacy `'started'` session file on live system — next restart creates a proper UUID session.
+- Tests: 10 new tests (clearSessionId ×2, isValidUUID ×5, spawnCoordinator new paths ×3). meta-agent: 128 tests. Total: 529.
+- chore: bump all package versions to 2.3.9.
+
 ## v2.3.8 — fix: advisory lock held on reserved connection
 
 - core/locks: `tryAcquireLock` now acquires via `db.reserve()` and keeps the connection alive for the lock's lifetime. Previously acquired on a pooled connection — if the pool recycled that connection, the advisory lock was silently released, breaking the meta-agent singleton guarantee. Observed live: no advisory lock held in DB despite two meta-agent processes running for hours.

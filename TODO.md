@@ -280,8 +280,16 @@
 - [x] Tests: 5 tests (true-acquires-no-release, false-releases, empty-releases, release-unlocks-and-releases, no-op-when-not-held). core: 55 tests. Total: 519.
 - [x] Live DB: applied pending migrations 005_feedback_msg_id.sql + 006_pruning_indexes.sql (were not auto-applied due to meta-agent starting before those migrations were built into dist).
 
+## v2.3.9 — fix: coordinator session UUID persistence ✅ complete
+
+- [x] meta-agent/coordinator: use `crypto.randomUUID()` + `--session-id <uuid>` on first spawn; `--resume <uuid>` on subsequent spawns
+- [x] meta-agent/coordinator: export `isValidUUID(id)` and `clearSessionId()` helpers
+- [x] meta-agent/index: detect fast exit (< 10 s) on UUID sessions → clear session file for clean restart
+- [x] Tests: 10 new tests. meta-agent: 128 tests. Total: 529.
+- [x] chore: bump all package versions to 2.3.9
+- [x] chore: cleared legacy `'started'` session file on live system
+
 ## Pending
 
-- [x] Restart meta-agent to activate the reserved-connection lock fix — PID 80183 running new dist (2026-04-17)
 - [ ] Push main branch to origin — requires human action
 - [ ] npm publish: run `pnpm -r publish --access public` once org namespace `@ouroboros` is claimed
