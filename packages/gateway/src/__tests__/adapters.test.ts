@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import http from 'node:http'
+import type { AddressInfo } from 'node:net'
 
 vi.mock('@ouroboros/core', () => ({
   log: vi.fn().mockResolvedValue(undefined),
@@ -19,10 +21,29 @@ import { LogAdapter } from '../adapters/log.js'
 import { SlackAdapter } from '../adapters/slack.js'
 import { WebhookAdapter } from '../adapters/webhook.js'
 import { TelegramAdapter } from '../adapters/telegram.js'
+import TelegramBot from 'node-telegram-bot-api'
 import crypto from 'node:crypto'
 
 const mockLog = vi.mocked(log)
 const mockGetDb = vi.mocked(getDb)
+
+// Drain the microtask + macrotask queue so void-async handlers complete.
+const flush = () => new Promise<void>(r => setTimeout(r, 0))
+
+// Configure the TelegramBot mock to capture event callbacks and expose send/stop stubs.
+function makeBot() {
+  const cbs: Record<string, (...args: unknown[]) => unknown> = {}
+  const sendMessage = vi.fn().mockResolvedValue({})
+  const stopPolling = vi.fn().mockResolvedValue(undefined)
+  vi.mocked(TelegramBot as unknown as (...a: unknown[]) => unknown).mockImplementationOnce(() => ({
+    on: vi.fn().mockImplementation((event: string, cb: (...args: unknown[]) => unknown) => {
+      cbs[event] = cb
+    }),
+    sendMessage,
+    stopPolling,
+  }))
+  return { cbs, sendMessage, stopPolling }
+}
 
 // Build a valid Slack HMAC-SHA256 signature for testing
 function slackSignature(secret: string, timestamp: string, body: string): string {
@@ -174,6 +195,85 @@ describe('ChannelAdapter implementations', () => {
         const result = await adapter.handleEvent(body, timestamp, sig)
         expect(result).toEqual({})
       })
+
+      it('returns null when payload is not an object', async () => {
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        const body = '"just a string"'
+        const sig = slackSignature(secret, timestamp, body)
+        const result = await adapter.handleEvent(body, timestamp, sig)
+        expect(result).toBeNull()
+      })
+
+      it('returns null when payload is invalid JSON', async () => {
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        const body = 'not-json'
+        const sig = slackSignature(secret, timestamp, body)
+        const result = await adapter.handleEvent(body, timestamp, sig)
+        expect(result).toBeNull()
+      })
+
+      it('handles /approve not found via event_callback', async () => {
+        const mockDb = vi.fn().mockResolvedValue([])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/approve fb-missing' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(adapter.send).toHaveBeenCalledWith('No feedback found with id fb-missing')
+      })
+
+      it('handles /reject not found via event_callback', async () => {
+        const mockDb = vi.fn().mockResolvedValue([])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/reject fb-missing' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(adapter.send).toHaveBeenCalledWith('No feedback found with id fb-missing')
+      })
+
+      it('handles /approve db error gracefully', async () => {
+        const mockDb = vi.fn().mockRejectedValue(new Error('db fail'))
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/approve fb-1' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('Error approving'))
+      })
+
+      it('handles /reject db error gracefully', async () => {
+        const mockDb = vi.fn().mockRejectedValue(new Error('db fail'))
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/reject fb-2' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('Error rejecting'))
+      })
+
+      it('returns {} when signature buffers have different lengths', async () => {
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        // A valid-format sig but intentionally short
+        const result = await adapter.handleEvent('{}', timestamp, 'v0=short')
+        expect(result).toBeNull()
+      })
     })
   })
 
@@ -193,6 +293,43 @@ describe('ChannelAdapter implementations', () => {
       const adapter = new WebhookAdapter('https://example.com/hook')
       await expect(adapter.stop()).resolves.toBeUndefined()
     })
+
+    it('send() POSTs JSON payload to HTTP endpoint', async () => {
+      let capturedBody = ''
+      const server = http.createServer((req, res) => {
+        let body = ''
+        req.on('data', (c: Buffer) => { body += c.toString() })
+        req.on('end', () => { capturedBody = body; res.writeHead(200); res.end() })
+      })
+      await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+      const { port } = server.address() as AddressInfo
+
+      const adapter = new WebhookAdapter(`http://127.0.0.1:${port}/hook`)
+      await adapter.send('hello webhook')
+      await new Promise<void>(resolve => server.close(() => resolve()))
+
+      const parsed = JSON.parse(capturedBody) as { message: string; timestamp: string }
+      expect(parsed.message).toBe('hello webhook')
+      expect(parsed.timestamp).toBeDefined()
+    })
+
+    it('send() logs error when server returns non-2xx', async () => {
+      const server = http.createServer((_req, res) => { res.writeHead(500); res.end() })
+      await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+      const { port } = server.address() as AddressInfo
+
+      const adapter = new WebhookAdapter(`http://127.0.0.1:${port}/hook`)
+      await adapter.send('fail test')
+      await new Promise<void>(resolve => server.close(() => resolve()))
+
+      expect(mockLog).toHaveBeenCalledWith('gateway:webhook', expect.stringContaining('send failed'))
+    })
+
+    it('send() logs error on connection failure', async () => {
+      const adapter = new WebhookAdapter('http://127.0.0.1:19998/hook')
+      await adapter.send('no server')
+      expect(mockLog).toHaveBeenCalledWith('gateway:webhook', expect.stringContaining('send failed'))
+    })
   })
 
   describe('TelegramAdapter', () => {
@@ -204,6 +341,229 @@ describe('ChannelAdapter implementations', () => {
     it('stop() before start() resolves without error', async () => {
       const adapter = new TelegramAdapter('bot-token', '-100123')
       await expect(adapter.stop()).resolves.toBeUndefined()
+    })
+
+    it('start() creates bot, registers message and polling_error handlers', async () => {
+      const { cbs } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      expect(cbs['message']).toBeDefined()
+      expect(cbs['polling_error']).toBeDefined()
+      expect(mockLog).toHaveBeenCalledWith('gateway:telegram', 'telegram adapter started (polling)')
+    })
+
+    it('stop() after start() calls stopPolling', async () => {
+      const { stopPolling } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      await adapter.stop()
+      expect(stopPolling).toHaveBeenCalled()
+    })
+
+    it('send() sends message when bot is active', async () => {
+      const { sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      await adapter.send('hello telegram')
+      expect(sendMessage).toHaveBeenCalledWith('-100', 'hello telegram')
+    })
+
+    it('send() logs error when sendMessage throws', async () => {
+      const { sendMessage } = makeBot()
+      sendMessage.mockRejectedValueOnce(new Error('rate limited'))
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      await adapter.send('fail msg')
+      expect(mockLog).toHaveBeenCalledWith('gateway:telegram', expect.stringContaining('send failed'))
+    })
+
+    it('polling_error handler logs the error', async () => {
+      const { cbs } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      await cbs['polling_error'](new Error('network fail'))
+      await flush()
+      expect(mockLog).toHaveBeenCalledWith('gateway:telegram', expect.stringContaining('polling error'))
+    })
+
+    it('ignores unknown text messages silently', async () => {
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: 'hello there' })
+      await flush()
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('handles message with undefined text', async () => {
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: undefined })
+      await flush()
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('/approve success', async () => {
+      const mockDb = vi.fn().mockResolvedValue([{ id: 'fb-1' }])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/approve fb-1' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', 'Evolution fb-1 approved.')
+    })
+
+    it('/approve not found', async () => {
+      const mockDb = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/approve fb-missing' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', 'No feedback found with id fb-missing')
+    })
+
+    it('/approve db error sends error message', async () => {
+      const mockDb = vi.fn().mockRejectedValue(new Error('db fail'))
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/approve fb-1' })
+      await flush()
+      expect(mockLog).toHaveBeenCalledWith('gateway:telegram', expect.stringContaining('approve error'))
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Error approving'))
+    })
+
+    it('/reject success', async () => {
+      const mockDb = vi.fn().mockResolvedValue([{ id: 'fb-2' }])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/reject fb-2' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', 'Evolution fb-2 rejected.')
+    })
+
+    it('/reject not found', async () => {
+      const mockDb = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/reject fb-missing' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', 'No feedback found with id fb-missing')
+    })
+
+    it('/reject db error sends error message', async () => {
+      const mockDb = vi.fn().mockRejectedValue(new Error('db fail'))
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/reject fb-2' })
+      await flush()
+      expect(mockLog).toHaveBeenCalledWith('gateway:telegram', expect.stringContaining('reject error'))
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Error rejecting'))
+    })
+
+    it('/status shows job and MCP counts', async () => {
+      const mockDb = vi.fn()
+        .mockResolvedValueOnce([{ running: '2', pending: '1', completed: '5', failed: '0' }])
+        .mockResolvedValueOnce([{ count: '3' }])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/status' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('running: 2'))
+    })
+
+    it('/status db error sends error message', async () => {
+      const mockDb = vi.fn().mockRejectedValue(new Error('db fail'))
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/status' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Error fetching status'))
+    })
+
+    it('/jobs shows recent jobs', async () => {
+      const mockDb = vi.fn().mockResolvedValue([
+        { id: 'job-1', description: 'test job', status: 'running', created_at: new Date() },
+      ])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/jobs' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('job-1'))
+    })
+
+    it('/jobs shows empty message when no jobs', async () => {
+      const mockDb = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/jobs' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', 'No jobs found.')
+    })
+
+    it('/jobs db error sends error message', async () => {
+      const mockDb = vi.fn().mockRejectedValue(new Error('db fail'))
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/jobs' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Error fetching jobs'))
+    })
+
+    it('/mcp lists registered MCPs with tools', async () => {
+      const mockDb = vi.fn().mockResolvedValue([
+        { name: 'pg-mcp', status: 'operational', tools_found: ['query', 'insert'] },
+      ])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/mcp' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('pg-mcp'))
+    })
+
+    it('/mcp shows empty message when none registered', async () => {
+      const mockDb = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/mcp' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', 'No MCPs registered.')
+    })
+
+    it('/mcp db error sends error message', async () => {
+      const mockDb = vi.fn().mockRejectedValue(new Error('db fail'))
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']({ text: '/mcp' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Error fetching MCPs'))
     })
   })
 })

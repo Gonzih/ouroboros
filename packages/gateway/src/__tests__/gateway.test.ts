@@ -134,6 +134,96 @@ describe('Gateway', () => {
 
       expect(adapter.send).not.toHaveBeenCalled()
     })
+
+    it('formats evolution_result event and broadcasts it', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'evolution_result', id: 'ev-1', status: 'approved' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('ev-1'))
+    })
+
+    it('formats evolution_proposed event and broadcasts it', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'evolution_proposed', id: 'ev-2', diff: 'diff --git ...' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('/approve ev-2'))
+    })
+
+    it('formats mcp_removed event and broadcasts it', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'mcp_removed', name: 'old-db' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('old-db'))
+    })
+
+    it('formats job_complete with error field', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'job_complete', jobId: 'j-err', status: 'failed', error: 'timeout' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('timeout'))
+    })
+
+    it('continues starting other adapters if one throws', async () => {
+      const a1 = makeMockAdapter('a1')
+      const a2 = makeMockAdapter('a2')
+      a1.start.mockRejectedValue(new Error('start failed'))
+      const gateway = new Gateway([a1, a2])
+
+      await expect(gateway.start()).resolves.toBeUndefined()
+      expect(a2.start).toHaveBeenCalled()
+    })
+
+    it('formats mcp_registered with no tools (defaults to "none")', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'mcp_registered', name: 'no-tools-mcp', status: 'partial' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('Tools: none'))
+    })
   })
 
   describe('stop', () => {
@@ -145,6 +235,17 @@ describe('Gateway', () => {
       await gateway.stop()
 
       expect(a1.stop).toHaveBeenCalled()
+    })
+
+    it('continues stopping other adapters if one throws', async () => {
+      const a1 = makeMockAdapter('a1')
+      const a2 = makeMockAdapter('a2')
+      a1.stop.mockRejectedValue(new Error('stop failed'))
+      const gateway = new Gateway([a1, a2])
+
+      await gateway.start()
+      await expect(gateway.stop()).resolves.toBeUndefined()
+      expect(a2.stop).toHaveBeenCalled()
     })
   })
 })

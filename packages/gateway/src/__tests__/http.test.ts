@@ -163,6 +163,34 @@ describe('HTTP approval routes', () => {
         expect(second.status).toBe(429)
       })
     })
+
+    it('returns 404 when reject feedback id does not exist', async () => {
+      mockGetDb.mockReturnValue(mockDb([], []))
+      await withServer(async (base) => {
+        const res = await fetch(`${base}/reject/no-such-id`, { method: 'POST' })
+        expect(res.status).toBe(404)
+      })
+    })
+
+    it('returns 500 when reject db throws', async () => {
+      const errDb = vi.fn().mockRejectedValue(new Error('connection lost'))
+      mockGetDb.mockReturnValue(errDb as unknown as ReturnType<typeof getDb>)
+      await withServer(async (base) => {
+        const res = await fetch(`${base}/reject/fb-err`, { method: 'POST' })
+        expect(res.status).toBe(500)
+      })
+    })
+  })
+
+  describe('POST /approve/:id error path', () => {
+    it('returns 500 when approve db throws', async () => {
+      const errDb = vi.fn().mockRejectedValue(new Error('connection lost'))
+      mockGetDb.mockReturnValue(errDb as unknown as ReturnType<typeof getDb>)
+      await withServer(async (base) => {
+        const res = await fetch(`${base}/approve/fb-err`, { method: 'POST' })
+        expect(res.status).toBe(500)
+      })
+    })
   })
 })
 
