@@ -76,4 +76,22 @@ describe('validateMcp', () => {
     const result = await validateMcp('test', { command: 'npx', args: ['test'] })
     expect(result.durationMs).toBeGreaterThanOrEqual(0)
   })
+
+  it('uses fetch-specific prompt for http scheme', async () => {
+    mockSpawn.mockReturnValue(makeSpawnResult('OPERATIONAL') as ReturnType<typeof spawnSync>)
+    await validateMcp('test', { command: 'npx', args: ['test'] }, 'http')
+    const callArgs = mockSpawn.mock.calls[0]!
+    const promptArg = callArgs[1] as string[]
+    const prompt = promptArg[promptArg.indexOf('-p') + 1]!
+    expect(prompt).toContain('fetch')
+  })
+
+  it('uses fetch-specific prompt for https scheme', async () => {
+    mockSpawn.mockReturnValue(makeSpawnResult('OPERATIONAL') as ReturnType<typeof spawnSync>)
+    await validateMcp('test', { command: 'npx', args: ['test'] }, 'https')
+    const callArgs = mockSpawn.mock.calls[0]!
+    const promptArg = callArgs[1] as string[]
+    const prompt = promptArg[promptArg.indexOf('-p') + 1]!
+    expect(prompt).toContain('fetch')
+  })
 })

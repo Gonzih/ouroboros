@@ -152,7 +152,8 @@ export function createServer(): express.Application {
           return
         }
 
-        const validation = await validateMcp(name, row.server_config)
+        const { scheme } = parseConnectionString(row.connection_string)
+        const validation = await validateMcp(name, row.server_config, scheme)
 
         await db`
           UPDATE ouro_mcp_registry

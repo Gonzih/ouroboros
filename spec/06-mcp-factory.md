@@ -17,7 +17,7 @@ Data never leaves the customer's machine. The MCP server runs locally. Claude Co
 | `s3://bucket/prefix` | `s3://corp-data/docs/` | `@modelcontextprotocol/server-aws-kb-retrieval` | stub |
 | `gdrive://folder-id` | `gdrive://1BxiMVs0XRA` | rclone-based | stub |
 | `onedrive://path` | `onedrive://Documents/data` | rclone-based | stub |
-| `http://` / `https://` | `https://api.internal/v1` | custom OpenAPI MCP | stub |
+| `http://` / `https://` | `https://api.internal/v1` | `@modelcontextprotocol/server-fetch` | v1 |
 
 ## HTTP API (port 7703)
 
@@ -59,21 +59,17 @@ We can't just `npx` the MCP server and check if it starts — we need to know th
        "{name}": { ...generated config }
      }
    }
-3. Build validation prompt:
-   "You have access to an MCP server called {name} (scheme: {scheme}).
-    List all available tools from this MCP.
-    For each tool, call it with a minimal safe test invocation (read-only, no mutations).
-    Postgres: SELECT 1 and list tables.
-    Filesystem: list the root directory.
-    GitHub: get repository info.
-    SQLite: list tables.
-    
-    Report exactly one of:
-    OPERATIONAL — all tools responded correctly
-    PARTIAL — some tools work, some failed (list which)
-    FAILED — no tools responded or MCP did not start
-    
-    Include tool names found and any error messages."
+3. Build validation prompt (scheme-specific):
+   Postgres: SELECT 1 to verify connectivity.
+   Filesystem: list the configured directory.
+   GitHub: call a basic read tool (list repos or get repo info).
+   SQLite: SELECT 1 to verify connectivity.
+   HTTP/HTTPS: fetch the configured URL (any response including 4xx counts — testing connectivity, not content).
+   
+   Each prompt ends with a required marker on its own line:
+   OPERATIONAL — all tools worked correctly
+   PARTIAL — some tools worked, others failed
+   FAILED — could not connect or no tools worked
 
 4. spawnSync claude:
    claude --print --dangerously-skip-permissions \
@@ -138,6 +134,12 @@ interface ValidationResult {
 {
   command: "npx",
   args: ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", path]
+}
+
+// http:// or https://
+{
+  command: "npx",
+  args: ["-y", "@modelcontextprotocol/server-fetch", connectionString]
 }
 ```
 

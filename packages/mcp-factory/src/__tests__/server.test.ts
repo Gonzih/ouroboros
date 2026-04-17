@@ -207,6 +207,7 @@ describe('mcp-factory server', () => {
 
     it('re-validates and returns result on success', async () => {
       mockDbFn.mockResolvedValueOnce([sampleRow]) // SELECT
+      mockParse.mockReturnValueOnce({ scheme: 'pg', host: 'localhost', database: 'db' } as ReturnType<typeof parseConnectionString>)
       mockValidate.mockResolvedValueOnce({ status: 'operational', log: 'All good', toolsFound: ['query'], failedTools: [], durationMs: 0 })
       mockDbFn.mockResolvedValueOnce([]) // UPDATE
       await withServer(async (base) => {
@@ -214,7 +215,7 @@ describe('mcp-factory server', () => {
         expect(res.status).toBe(200)
         const body = await res.json() as { status: string }
         expect(body.status).toBe('operational')
-        expect(mockValidate).toHaveBeenCalledWith('my-db', sampleConfig)
+        expect(mockValidate).toHaveBeenCalledWith('my-db', sampleConfig, 'pg')
       })
     })
   })

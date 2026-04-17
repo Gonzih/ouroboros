@@ -53,6 +53,26 @@ At the very end of your response, write one of these markers on its own line:
 OPERATIONAL — all tools worked correctly
 PARTIAL — some tools worked, others failed
 FAILED — could not open database or no tools worked`,
+
+  http: `You have access to an HTTP fetch MCP server. Test it as follows:
+1. List all available tools from the MCP server
+2. Use the fetch tool to retrieve the URL that was configured for this server
+3. Report which tools you found and whether the fetch succeeded (any HTTP response, including 4xx, counts as success — we are testing connectivity, not content)
+
+At the very end of your response, write one of these markers on its own line:
+OPERATIONAL — all tools worked correctly
+PARTIAL — some tools worked, others failed
+FAILED — could not connect or no tools worked`,
+
+  https: `You have access to an HTTPS fetch MCP server. Test it as follows:
+1. List all available tools from the MCP server
+2. Use the fetch tool to retrieve the URL that was configured for this server
+3. Report which tools you found and whether the fetch succeeded (any HTTP response, including 4xx, counts as success — we are testing connectivity, not content)
+
+At the very end of your response, write one of these markers on its own line:
+OPERATIONAL — all tools worked correctly
+PARTIAL — some tools worked, others failed
+FAILED — could not connect or no tools worked`,
 }
 
 const DEFAULT_PROMPT = `You have access to an MCP server. Test it as follows:
