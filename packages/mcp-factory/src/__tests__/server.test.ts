@@ -75,7 +75,8 @@ describe('mcp-factory server', () => {
   beforeEach(() => {
     // resetAllMocks clears queued once-values so they don't leak across tests
     vi.resetAllMocks()
-    mockGetDb.mockReturnValue(mockDbFn)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockGetDb.mockReturnValue(mockDbFn as any)
     mockDbFn.mockResolvedValue([])
     // Re-apply json helper after reset (vi.fn() reset doesn't remove plain properties)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,7 +121,7 @@ describe('mcp-factory server', () => {
     })
 
     it('returns 400 when generateConfig throws StubError', async () => {
-      mockParse.mockReturnValueOnce({ scheme: 's3', host: 'bucket' })
+      mockParse.mockReturnValueOnce({ scheme: 's3', path: 'bucket/path', raw: 's3://bucket/path' })
       mockGenerate.mockImplementationOnce(() => { throw new StubError('s3: not yet implemented') })
       await withServer(async (base) => {
         const res = await fetch(`${base}/mcp/register`, {
@@ -133,9 +134,9 @@ describe('mcp-factory server', () => {
     })
 
     it('returns 422 when validation fails', async () => {
-      mockParse.mockReturnValueOnce({ scheme: 'pg', host: 'localhost' })
+      mockParse.mockReturnValueOnce({ scheme: 'pg', path: 'localhost/db', raw: 'pg://localhost/db' })
       mockGenerate.mockReturnValueOnce(sampleConfig)
-      mockValidate.mockResolvedValueOnce({ status: 'failed', log: 'Connection refused', toolsFound: [] })
+      mockValidate.mockResolvedValueOnce({ status: 'failed', log: 'Connection refused', toolsFound: [], failedTools: [], durationMs: 0 })
       await withServer(async (base) => {
         const res = await fetch(`${base}/mcp/register`, {
           method: 'POST',
@@ -150,9 +151,9 @@ describe('mcp-factory server', () => {
     })
 
     it('registers and returns config on success', async () => {
-      mockParse.mockReturnValueOnce({ scheme: 'pg', host: 'localhost' })
+      mockParse.mockReturnValueOnce({ scheme: 'pg', path: 'localhost/db', raw: 'pg://localhost/db' })
       mockGenerate.mockReturnValueOnce(sampleConfig)
-      mockValidate.mockResolvedValueOnce({ status: 'operational', log: 'All good', toolsFound: ['query'] })
+      mockValidate.mockResolvedValueOnce({ status: 'operational', log: 'All good', toolsFound: ['query'], failedTools: [], durationMs: 0 })
       mockDbFn
         .mockResolvedValueOnce([])       // INSERT upsert
         .mockResolvedValueOnce([sampleRow]) // SELECT after insert
@@ -206,7 +207,7 @@ describe('mcp-factory server', () => {
 
     it('re-validates and returns result on success', async () => {
       mockDbFn.mockResolvedValueOnce([sampleRow]) // SELECT
-      mockValidate.mockResolvedValueOnce({ status: 'operational', log: 'All good', toolsFound: ['query'] })
+      mockValidate.mockResolvedValueOnce({ status: 'operational', log: 'All good', toolsFound: ['query'], failedTools: [], durationMs: 0 })
       mockDbFn.mockResolvedValueOnce([]) // UPDATE
       await withServer(async (base) => {
         const res = await fetch(`${base}/mcp/test/my-db`, { method: 'POST' })
