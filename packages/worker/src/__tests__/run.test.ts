@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { EventEmitter as EventEmitterType } from 'node:events'
+import { spawn } from 'node:child_process'
 
 const {
   mockProc, mockStdoutRl, mockStderrRl,
@@ -118,5 +119,166 @@ describe('worker run — output line publish', () => {
       }
     )
     expect(ourLine).toBeDefined()
+  })
+})
+
+describe('worker run — session resumption (--continue)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockStdoutRl.removeAllListeners()
+    mockStderrRl.removeAllListeners()
+    mockProc.removeAllListeners()
+    resetRlCallCount()
+    mockDb.fn = () => Promise.resolve([])
+    mockPublish.fn = () => Promise.resolve()
+  })
+
+  it('uses --continue when sessionId is present in task', async () => {
+    process.env['OURO_TASK'] = JSON.stringify({
+      id: 'resume-job',
+      backend: 'local',
+      target: '/tmp/test',
+      instructions: 'resume work',
+      sessionId: 'existing-session-abc',
+    })
+
+    const runPromise = run()
+    await tick(6)
+    mockStdoutRl.emit('line', 'TASK_DONE')
+    await tick(6)
+    mockProc.emit('close', 0)
+    await runPromise
+
+    const spawnArgs = vi.mocked(spawn).mock.calls[0]?.[1] as string[]
+    expect(spawnArgs).toContain('--continue')
+  })
+
+  it('does not use --continue on fresh dispatch', async () => {
+    process.env['OURO_TASK'] = JSON.stringify({
+      id: 'fresh-job',
+      backend: 'local',
+      target: '/tmp/test',
+      instructions: 'fresh work',
+    })
+
+    const runPromise = run()
+    await tick(6)
+    mockStdoutRl.emit('line', 'TASK_DONE')
+    await tick(6)
+    mockProc.emit('close', 0)
+    await runPromise
+
+    const spawnArgs = vi.mocked(spawn).mock.calls[0]?.[1] as string[]
+    expect(spawnArgs).not.toContain('--continue')
+  })
+})
+
+describe('worker run — completion status publishing', () => {
+  const publishCalls: Array<[string, unknown]> = []
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockStdoutRl.removeAllListeners()
+    mockStderrRl.removeAllListeners()
+    mockProc.removeAllListeners()
+    resetRlCallCount()
+    publishCalls.length = 0
+    mockDb.fn = () => Promise.resolve([])
+    mockPublish.fn = (ch: string, p: unknown) => {
+      publishCalls.push([ch, p])
+      return Promise.resolve()
+    }
+  })
+
+  it('publishes job_complete with completed status on TASK_DONE', async () => {
+    process.env['OURO_TASK'] = JSON.stringify({
+      id: 'done-job',
+      backend: 'local',
+      target: '/tmp/test',
+      instructions: 'do the thing',
+    })
+
+    const runPromise = run()
+    await tick(6)
+    mockStdoutRl.emit('line', 'TASK_DONE')
+    await tick(6)
+    mockProc.emit('close', 0)
+    await runPromise
+
+    const completeCall = publishCalls.find(
+      ([ch, p]) => ch === 'ouro_notify' && (p as Record<string, unknown>)['type'] === 'job_complete'
+    )
+    expect(completeCall).toBeDefined()
+    expect((completeCall![1] as Record<string, unknown>)['status']).toBe('completed')
+    expect((completeCall![1] as Record<string, unknown>)['jobId']).toBe('done-job')
+  })
+
+  it('publishes job_complete with failed status on TASK_FAILED line', async () => {
+    process.env['OURO_TASK'] = JSON.stringify({
+      id: 'fail-job',
+      backend: 'local',
+      target: '/tmp/test',
+      instructions: 'do the thing',
+    })
+
+    const runPromise = run()
+    await tick(6)
+    mockStdoutRl.emit('line', 'TASK_FAILED:could not complete')
+    await tick(6)
+    mockProc.emit('close', 0)
+    await runPromise
+
+    const completeCall = publishCalls.find(
+      ([ch, p]) => ch === 'ouro_notify' && (p as Record<string, unknown>)['type'] === 'job_complete'
+    )
+    expect(completeCall).toBeDefined()
+    expect((completeCall![1] as Record<string, unknown>)['status']).toBe('failed')
+  })
+
+  it('publishes job_complete with failed status on non-zero claude exit', async () => {
+    process.env['OURO_TASK'] = JSON.stringify({
+      id: 'crash-job',
+      backend: 'local',
+      target: '/tmp/test',
+      instructions: 'do the thing',
+    })
+
+    const runPromise = run()
+    await tick(6)
+    mockStderrRl.emit('line', 'fatal: permission denied')
+    await tick(2)
+    mockProc.emit('close', 1)
+    await runPromise
+
+    const completeCall = publishCalls.find(
+      ([ch, p]) => ch === 'ouro_notify' && (p as Record<string, unknown>)['type'] === 'job_complete'
+    )
+    expect(completeCall).toBeDefined()
+    expect((completeCall![1] as Record<string, unknown>)['status']).toBe('failed')
+  })
+})
+
+describe('worker run — input validation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockDb.fn = () => Promise.resolve([])
+    mockPublish.fn = () => Promise.resolve()
+  })
+
+  it('throws when OURO_TASK env var is not set', async () => {
+    delete process.env['OURO_TASK']
+    await expect(run()).rejects.toThrow('OURO_TASK env var is required')
+  })
+
+  it('throws when OURO_TASK is not valid JSON', async () => {
+    process.env['OURO_TASK'] = 'not-valid-json'
+    await expect(run()).rejects.toThrow(/failed to parse OURO_TASK/)
+  })
+
+  it('throws on unknown backend name', async () => {
+    process.env['OURO_TASK'] = JSON.stringify({
+      id: 'j1', backend: 'mongodb', target: '/tmp', instructions: 'go',
+    })
+    await expect(run()).rejects.toThrow('unknown backend: mongodb')
   })
 })

@@ -1,33 +1,33 @@
-import { describe, it, before, after } from 'node:test'
-import assert from 'node:assert/strict'
+import { describe, it, expect } from 'vitest'
 
-const DB_URL = process.env['DATABASE_URL']
-const skipDb = !DB_URL
+// Requires DATABASE_URL *and* OURO_INTEGRATION_TESTS=1 to avoid
+// accidentally hitting a live queue with shared state.
+const skipDb = !process.env['DATABASE_URL'] || process.env['OURO_INTEGRATION_TESTS'] !== '1'
 
-describe('packages/core', () => {
+describe('core — DB integration', () => {
   describe('migrate', () => {
-    it('runs without error', { skip: skipDb ? 'DATABASE_URL not set' : false }, async () => {
+    it.skipIf(skipDb)('runs without error', async () => {
       const { migrate } = await import('../migrate.js')
-      await assert.doesNotReject(migrate())
+      await migrate()
     })
   })
 
   describe('queue', () => {
-    it('enqueue/dequeue round-trip', { skip: skipDb ? 'DATABASE_URL not set' : false }, async () => {
+    it.skipIf(skipDb)('enqueue/dequeue round-trip', async () => {
       const { enqueue, dequeue, ack } = await import('../queue.js')
       const payload = { hello: 'world', ts: Date.now() }
       const msgId = await enqueue('ouro_tasks', payload)
-      assert.equal(typeof msgId, 'bigint')
+      expect(typeof msgId).toBe('bigint')
 
       const item = await dequeue<typeof payload>('ouro_tasks')
-      assert.ok(item !== null)
-      assert.equal(item.message.hello, 'world')
-      await ack('ouro_tasks', item.msgId)
+      expect(item).not.toBeNull()
+      expect(item!.message.hello).toBe('world')
+      await ack('ouro_tasks', item!.msgId)
     })
   })
 
   describe('events', () => {
-    it('publish/subscribe round-trip', { skip: skipDb ? 'DATABASE_URL not set' : false }, async () => {
+    it.skipIf(skipDb)('publish/subscribe round-trip', async () => {
       const { publish, subscribe } = await import('../events.js')
       const received: unknown[] = []
 
@@ -35,33 +35,28 @@ describe('packages/core', () => {
         received.push(payload)
       })
 
-      // Give LISTEN time to register
       await new Promise(r => setTimeout(r, 100))
       await publish('test_channel', { ping: true })
-
-      // Wait for notification to arrive
       await new Promise(r => setTimeout(r, 200))
       await unsub()
 
-      assert.ok(received.length >= 1)
-      assert.deepEqual((received[0] as { ping: boolean }).ping, true)
+      expect(received.length).toBeGreaterThanOrEqual(1)
+      expect((received[0] as { ping: boolean }).ping).toBe(true)
     })
   })
 
   describe('locks', () => {
-    it('tryAcquireLock returns true then false for same key', { skip: skipDb ? 'DATABASE_URL not set' : false }, async () => {
+    it.skipIf(skipDb)('tryAcquireLock returns true then false for same key', async () => {
       const { tryAcquireLock, releaseLock } = await import('../locks.js')
       const key = `test-lock-${Date.now()}`
 
       const first = await tryAcquireLock(key)
-      assert.equal(first, true)
+      expect(first).toBe(true)
 
-      // Same session — advisory locks are reentrant, so the second call also returns true.
-      // To test exclusion we'd need a second connection. Instead verify release works.
       await releaseLock(key)
 
       const after = await tryAcquireLock(key)
-      assert.equal(after, true)
+      expect(after).toBe(true)
       await releaseLock(key)
     })
   })
