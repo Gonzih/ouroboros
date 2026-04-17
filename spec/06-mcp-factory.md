@@ -15,7 +15,7 @@ Data never leaves the customer's machine. The MCP server runs locally. Claude Co
 | `github://owner/repo` | `github://acme/internal-wiki` | `@modelcontextprotocol/server-github` | v1 |
 | `sqlite:///path` | `sqlite:///app.db` | `@modelcontextprotocol/server-sqlite` | v1 |
 | `s3://bucket/prefix` | `s3://corp-data/docs/` | `@modelcontextprotocol/server-aws-kb-retrieval` | stub |
-| `gdrive://folder-id` | `gdrive://1BxiMVs0XRA` | rclone-based | stub |
+| `gdrive:///path/to/sa.json` | `gdrive:///etc/sa.json` | `@modelcontextprotocol/server-gdrive` | v1 |
 | `onedrive://path` | `onedrive://Documents/data` | rclone-based | stub |
 | `http://` / `https://` | `https://api.internal/v1` | `@modelcontextprotocol/server-fetch` | v1 |
 
@@ -65,6 +65,7 @@ We can't just `npx` the MCP server and check if it starts — we need to know th
    GitHub: call a basic read tool (list repos or get repo info).
    SQLite: SELECT 1 to verify connectivity.
    HTTP/HTTPS: fetch the configured URL (any response including 4xx counts — testing connectivity, not content).
+   Google Drive: list available tools and attempt a file listing.
    
    Each prompt ends with a required marker on its own line:
    OPERATIONAL — all tools worked correctly
@@ -140,6 +141,13 @@ interface ValidationResult {
 {
   command: "npx",
   args: ["-y", "@modelcontextprotocol/server-fetch", connectionString]
+}
+
+// gdrive:///path/to/service-account.json
+{
+  command: "npx",
+  args: ["-y", "@modelcontextprotocol/server-gdrive"],
+  env: { GOOGLE_APPLICATION_CREDENTIALS: "/path/to/service-account.json" }
 }
 ```
 

@@ -40,12 +40,12 @@ Worker calls: `prepare → run claude → commit → cleanup`. Backend is a plug
 - Required env: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
 - v1: basic sync, no versioning
 
-### GDriveBackend (stub v1)
-- Uses `rclone` — must be installed and configured
+### GDriveBackend
+- Uses `rclone` — must be installed and configured with a `gdrive` remote
 - `prepare`: `rclone copy gdrive:{folderId} /tmp/ouro-{taskId}`
 - `commit`: `rclone copy /tmp/ouro-{taskId} gdrive:{folderId}`
 - `cleanup`: `rm -rf /tmp/ouro-{taskId}`
-- v1: full sync (no incremental)
+- Connection string: `gdrive://1BxiMVs0XRA` → rclone path `gdrive:1BxiMVs0XRA`
 
 ### OneDriveBackend (stub v1)
 - Also uses `rclone` with OneDrive remote
@@ -125,4 +125,4 @@ await publish('ouro_notify', { type: 'job_complete', jobId: id, status: 'failed'
 - ✅ Local backend git: auto git-init if no .git found
 - ✅ Timeout: no hard timeout — heartbeat goes stale after 10min idle, watchdog requeues with session_id
 - ✅ Session continuity: --continue on resume, session_id persisted in ouro_jobs
-- ⬜ S3/GDrive/OneDrive: stubbed for v1, implement via Ouroboros feedback loop when needed
+- ✅ GDrive/S3/OneDrive backends: fully implemented using rclone (GDrive, OneDrive) and aws CLI (S3)
