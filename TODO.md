@@ -197,6 +197,11 @@
 - [x] docs: remove "stub v1" labels from S3/GDrive/OneDrive worker backend specs (all are fully implemented)
 - [x] docs: update spec/06-mcp-factory.md — gdrive row updated to v1 with correct package and config example
 
+## v2.1.3 — Slack command parity ✅ complete
+
+- [x] gateway: add `/status`, `/jobs`, `/mcp` commands to SlackAdapter — Slack now has full parity with Telegram and Discord (8 commands each)
+- [x] Tests: 3 new Slack command tests. gateway: 132 tests. Total: 499
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

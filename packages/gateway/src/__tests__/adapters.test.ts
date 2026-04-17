@@ -323,6 +323,54 @@ describe('ChannelAdapter implementations', () => {
         expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('Task queued'))
       })
 
+      it('handles /status command and shows job and MCP counts', async () => {
+        const mockDb = vi.fn()
+          .mockResolvedValueOnce([{ running: '2', pending: '1', completed: '5', failed: '0' }])
+          .mockResolvedValueOnce([{ count: '3' }])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/status' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('running: 2'))
+      })
+
+      it('handles /jobs command and shows recent jobs', async () => {
+        const mockDb = vi.fn().mockResolvedValue([
+          { id: 'job-1', description: 'test job', status: 'running', created_at: new Date() },
+        ])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/jobs' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('job-1'))
+      })
+
+      it('handles /mcp command and lists registered MCPs', async () => {
+        const mockDb = vi.fn().mockResolvedValue([
+          { name: 'pg-mcp', status: 'operational', tools_found: ['query', 'insert'] },
+        ])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/mcp' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('pg-mcp'))
+      })
+
       it('returns {} when signature buffers have different lengths', async () => {
         const adapter = new SlackAdapter('token', 'chan', secret)
         // A valid-format sig but intentionally short

@@ -100,6 +100,12 @@ export class SlackAdapter implements ChannelAdapter {
     } else if (text.startsWith('/reject ')) {
       const id = text.slice('/reject '.length).trim()
       if (id) await this.handleReject(id)
+    } else if (text === '/status') {
+      await this.handleStatus()
+    } else if (text === '/jobs') {
+      await this.handleJobs()
+    } else if (text === '/mcp') {
+      await this.handleMcp()
     } else if (text === '/logs') {
       await this.handleLogs()
     } else if (text.startsWith('/feedback ')) {
@@ -107,6 +113,80 @@ export class SlackAdapter implements ChannelAdapter {
       if (feedbackText) await this.handleFeedback(feedbackText)
     } else if (text.startsWith('/task ')) {
       await this.handleTask(text.slice('/task '.length).trim())
+    }
+  }
+
+  private async handleStatus(): Promise<void> {
+    try {
+      const db = getDb()
+      const [jobStats] = await db<[{ running: string; pending: string; completed: string; failed: string }]>`
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'running') AS running,
+          COUNT(*) FILTER (WHERE status = 'pending') AS pending,
+          COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+          COUNT(*) FILTER (WHERE status = 'failed') AS failed
+        FROM ouro_jobs
+      `
+      const [mcpStats] = await db<[{ count: string }]>`
+        SELECT COUNT(*) AS count FROM ouro_mcp_registry WHERE status = 'operational'
+      `
+      const running = jobStats?.running ?? '0'
+      const pending = jobStats?.pending ?? '0'
+      const completed = jobStats?.completed ?? '0'
+      const failed = jobStats?.failed ?? '0'
+      const mcpCount = mcpStats?.count ?? '0'
+      await this.send(
+        `Status:\n` +
+        `Jobs — running: ${running}, pending: ${pending}, completed: ${completed}, failed: ${failed}\n` +
+        `Active MCPs: ${mcpCount}`
+      )
+    } catch (err: unknown) {
+      await log('gateway:slack', `status error: ${String(err)}`)
+      await this.send(`Error fetching status: ${String(err)}`)
+    }
+  }
+
+  private async handleJobs(): Promise<void> {
+    try {
+      const db = getDb()
+      const jobs = await db<{ id: string; description: string; status: string; created_at: Date }[]>`
+        SELECT id, description, status, created_at
+        FROM ouro_jobs
+        ORDER BY created_at DESC
+        LIMIT 5
+      `
+      if (jobs.length === 0) {
+        await this.send('No jobs found.')
+        return
+      }
+      const lines = jobs.map(j => `• [${j.status}] ${j.id}: ${j.description}`)
+      await this.send(`Last ${jobs.length} jobs:\n${lines.join('\n')}`)
+    } catch (err: unknown) {
+      await log('gateway:slack', `jobs error: ${String(err)}`)
+      await this.send(`Error fetching jobs: ${String(err)}`)
+    }
+  }
+
+  private async handleMcp(): Promise<void> {
+    try {
+      const db = getDb()
+      const mcps = await db<{ name: string; status: string; tools_found: string[] | null }[]>`
+        SELECT name, status, tools_found
+        FROM ouro_mcp_registry
+        ORDER BY registered_at DESC
+      `
+      if (mcps.length === 0) {
+        await this.send('No MCPs registered.')
+        return
+      }
+      const lines = mcps.map(m => {
+        const tools = m.tools_found?.join(', ') ?? 'none'
+        return `• [${m.status}] ${m.name} — tools: ${tools}`
+      })
+      await this.send(`Registered MCPs:\n${lines.join('\n')}`)
+    } catch (err: unknown) {
+      await log('gateway:slack', `mcp error: ${String(err)}`)
+      await this.send(`Error fetching MCPs: ${String(err)}`)
     }
   }
 

@@ -1,3 +1,8 @@
+## v2.1.3 — Slack command parity
+
+- gateway: `SlackAdapter` now supports `/status`, `/jobs`, and `/mcp` commands — Slack reaches full parity with Telegram and Discord. All three adapters now expose the same 8 commands: `/approve`, `/reject`, `/status`, `/jobs`, `/mcp`, `/logs`, `/feedback`, `/task`.
+- Tests: 3 new Slack command tests (status, jobs, mcp). gateway: 132 tests. Total: 499.
+
 ## v2.1.2 — Complete gateway command set
 
 - gateway: `/task` command added to Telegram, Slack, and Discord. Full form: `/task <backend> <target> <instructions>`. Short form: `/task <instructions>` uses `git` backend and `OURO_REPO_ROOT` as target. Creates a job row in `ouro_jobs` and enqueues to `ouro_tasks`.
