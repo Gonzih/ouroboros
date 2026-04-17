@@ -216,6 +216,33 @@ describe('pollForApproval', () => {
     await promise
 
     expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 1n)
+    expect(mockLog).toHaveBeenCalledWith('meta-agent:evolution', expect.stringContaining('not found'))
+  })
+
+  it('closes PR and sets timed_out when 7-day deadline expires', async () => {
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+    // DB always returns 'pr_open' so we never approve/reject — we wait for timeout
+    const mockDbFn = vi.fn().mockResolvedValue([{ status: 'pr_open' }])
+    mockGetDb.mockReturnValue(mockDbFn as unknown as ReturnType<typeof getDb>)
+    mockSpawn.mockReturnValueOnce(okResult('Closed PR')) // close PR call on timeout
+
+    const promise = pollForApproval('fT', 'https://pr/T', 99n, '/repo')
+    // First tick: 10s passes, SELECT returns pr_open, loop continues
+    await vi.advanceTimersByTimeAsync(10_001)
+    // Advance past the 7-day deadline — loop exits on next while-check
+    await vi.advanceTimersByTimeAsync(SEVEN_DAYS_MS + 10_001)
+    await promise
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([expect.stringContaining('gh pr close https://pr/T')]),
+      expect.any(Object),
+    )
+    expect(mockAck).toHaveBeenCalledWith('ouro_feedback', 99n)
+    expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({
+      type: 'evolution_timeout',
+      id: 'fT',
+    }))
     expect(mockLog).toHaveBeenCalledWith('meta-agent:evolution', expect.stringContaining('timed out'))
   })
 

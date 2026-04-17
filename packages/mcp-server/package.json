@@ -1,6 +1,6 @@
 {
   "name": "@ouroboros/mcp-server",
-  "version": "2.3.5",
+  "version": "2.3.6",
   "description": "Ouroboros control plane MCP server — exposes jobs, MCPs, feedback, logs, and schedules as tools",
   "private": true,
   "type": "module",

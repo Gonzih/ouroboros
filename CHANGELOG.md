@@ -1,3 +1,8 @@
+## v2.3.6 — evolution timeout: close PR + set timed_out status
+
+- meta-agent/evolution: `pollForApproval` now properly handles the 7-day deadline. Previously both "feedback row deleted" and "7-day deadline expired" fell through to the same code path that only logged and acked, leaving the GitHub PR open and the `ouro_feedback` row stuck at `pr_open` indefinitely. Now the two cases are distinguished: a deleted row acks the orphaned message silently; an actual deadline expiry closes the PR via `gh pr close`, updates status to `timed_out`, and publishes an `evolution_timeout` notify event so the gateway can inform the user.
+- Tests: 1 new test (timeout path: closes PR, updates status, publishes event). meta-agent: 118 tests. Total: 517.
+
 ## v2.3.5 — evolution restart resume
 
 - meta-agent/evolution: `startEvolution()` now queries `ouro_feedback WHERE status='pr_open' AND queue_msg_id IS NOT NULL` on startup and resumes `pollForApproval` for any in-flight PRs. Previously a meta-agent restart would silently drop approval pollers for open PRs, meaning users had to re-approve or re-submit. Now approval polling survives process restarts transparently.

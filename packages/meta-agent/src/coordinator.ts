@@ -33,7 +33,7 @@ Your job:
 6. Schedules — list_schedules() to see recurring job templates. create_schedule(), update_schedule(), toggle_schedule(), delete_schedule() to manage them on user request or as needed.
 
 Be autonomous. Act on what needs action. Check state periodically. When you finish a cycle, wait a moment then check again.
-The system is Ouroboros v2.3.5. Running with --continue so your context persists across restarts.`
+The system is Ouroboros v2.3.6. Running with --continue so your context persists across restarts.`
 }
 
 export async function spawnCoordinator(): Promise<ChildProcess> {

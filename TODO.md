@@ -260,6 +260,12 @@
 - [x] coordinator.ts: version string updated to v2.3.5
 - [x] CHANGELOG.md: add missing entries for v2.3.3, v2.3.4, v2.3.5
 
+## v2.3.6 — evolution timeout: close PR + set timed_out status ✅ complete
+
+- [x] meta-agent/evolution: `pollForApproval` now distinguishes "row not found" (orphaned message) from "7-day deadline expired". On timeout: close the GitHub PR via claude subprocess, update `ouro_feedback.status = 'timed_out'`, publish `evolution_timeout` event. Previously the PR was left open and the row was stuck at `pr_open` forever.
+- [x] Tests: 1 new test (closes PR, sets timed_out, publishes event on deadline). meta-agent: 118 tests. Total: 517
+- [x] chore: bump all package versions to 2.3.6
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

@@ -58,6 +58,7 @@ export async function pollForApproval(
 ): Promise<void> {
   const db = getDb()
   const deadline = Date.now() + 7 * 24 * 60 * 60 * 1000
+  let rowNotFound = false
 
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 10_000))
@@ -68,7 +69,7 @@ export async function pollForApproval(
         SELECT status FROM ouro_feedback WHERE id = ${feedbackId}
       `
       const row = rows[0]
-      if (!row) break
+      if (!row) { rowNotFound = true; break }
       status = row.status
     } catch (err) {
       await log('meta-agent:evolution', `poll error for feedback ${feedbackId}: ${String(err)}`)
@@ -145,9 +146,27 @@ export async function pollForApproval(
     }
   }
 
-  // Timed out waiting — log and ack so the message doesn't linger forever
+  if (rowNotFound) {
+    await log('meta-agent:evolution', `feedback ${feedbackId} row not found — acking orphaned message`)
+    await ack('ouro_feedback', msgId)
+    return
+  }
+
+  // Deadline expired — close the open PR, mark timed_out, and ack
   await log('meta-agent:evolution', `feedback ${feedbackId} approval timed out after 7 days`)
+  try {
+    const closePrompt = `Close the PR at ${prUrl} by running: gh pr close ${prUrl}`
+    runClaude(closePrompt, repoRoot)
+  } catch (err) {
+    await log('meta-agent:evolution', `close PR on timeout failed for ${prUrl}: ${String(err)}`)
+  }
+  await db`
+    UPDATE ouro_feedback
+    SET status = 'timed_out', resolved_at = NOW()
+    WHERE id = ${feedbackId}
+  `
   await ack('ouro_feedback', msgId)
+  await publish('ouro_notify', { type: 'evolution_timeout', id: feedbackId, prUrl })
 }
 
 export async function processOneFeedback(): Promise<void> {
