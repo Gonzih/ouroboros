@@ -22,11 +22,14 @@ export async function start(): Promise<void> {
     adapters.push(new TelegramAdapter(telegramToken, telegramChatId))
   }
 
-  // Slack: requires SLACK_BOT_TOKEN and SLACK_CHANNEL_ID
+  // Slack: requires SLACK_BOT_TOKEN and SLACK_CHANNEL_ID.
+  // SLACK_SIGNING_SECRET enables inbound Events API support (/approve, /reject).
   const slackToken = process.env['SLACK_BOT_TOKEN']
   const slackChannelId = process.env['SLACK_CHANNEL_ID']
+  let slackAdapter: SlackAdapter | undefined
   if (slackToken && slackChannelId) {
-    adapters.push(new SlackAdapter(slackToken, slackChannelId))
+    slackAdapter = new SlackAdapter(slackToken, slackChannelId, process.env['SLACK_SIGNING_SECRET'])
+    adapters.push(slackAdapter)
   }
 
   // Webhook: requires OURO_WEBHOOK_URL
@@ -35,8 +38,8 @@ export async function start(): Promise<void> {
     adapters.push(new WebhookAdapter(webhookUrl))
   }
 
-  // startHttpServer handles OIDC middleware setup when OURO_OIDC_ISSUER is set
-  await startHttpServer()
+  // startHttpServer handles OIDC middleware and optional Slack events route
+  await startHttpServer(slackAdapter)
 
   const gateway = new Gateway(adapters)
 

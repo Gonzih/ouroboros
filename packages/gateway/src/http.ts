@@ -3,6 +3,7 @@ import express from 'express'
 import type { Router } from 'express'
 import { getDb, publish, log } from '@ouroboros/core'
 import { createOidcMiddleware } from './oidc.js'
+import type { SlackAdapter } from './adapters/slack.js'
 
 export const PORT_GATEWAY = parseInt(process.env['PORT_GATEWAY'] ?? '7701', 10)
 
@@ -95,8 +96,33 @@ export function createRouter(): Router {
   return router
 }
 
-export async function startHttpServer(): Promise<void> {
+export async function startHttpServer(slackAdapter?: SlackAdapter): Promise<void> {
   const app = express()
+
+  // Slack Events API: must be registered BEFORE express.json() so the raw body
+  // is available for HMAC-SHA256 signature verification.
+  if (slackAdapter) {
+    app.post('/slack/events', express.raw({ type: '*/*' }), (req, res) => {
+      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString() : ''
+      const timestamp = String(req.headers['x-slack-request-timestamp'] ?? '')
+      const signature = String(req.headers['x-slack-signature'] ?? '')
+      void slackAdapter.handleEvent(rawBody, timestamp, signature).then((result) => {
+        if (result === null) {
+          res.status(403).json({ error: 'invalid request' })
+          return
+        }
+        if (result.challenge !== undefined) {
+          res.json({ challenge: result.challenge })
+          return
+        }
+        res.json({ ok: true })
+      }).catch((err: unknown) => {
+        void log('gateway:http', `slack events error: ${String(err)}`)
+        res.status(500).json({ error: String(err) })
+      })
+    })
+  }
+
   app.use(express.json())
 
   const oidcIssuer = process.env['OURO_OIDC_ISSUER']

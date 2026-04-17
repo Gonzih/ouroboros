@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import express from 'express'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import crypto from 'node:crypto'
 
 vi.mock('@ouroboros/core', () => ({
   getDb: vi.fn(),
@@ -11,8 +12,43 @@ vi.mock('@ouroboros/core', () => ({
 
 import { getDb, publish } from '@ouroboros/core'
 import { createRouter } from '../http.js'
+import { SlackAdapter } from '../adapters/slack.js'
 
 const mockGetDb = vi.mocked(getDb)
+
+function slackSignature(secret: string, timestamp: string, body: string): string {
+  return 'v0=' + crypto.createHmac('sha256', secret).update(`v0:${timestamp}:${body}`).digest('hex')
+}
+
+// Spin up a server that includes the Slack events route (mimics startHttpServer behaviour)
+async function withSlackServer(
+  slackAdapter: SlackAdapter,
+  fn: (baseUrl: string) => Promise<void>,
+): Promise<void> {
+  const app = express()
+  app.post('/slack/events', express.raw({ type: '*/*' }), (req, res) => {
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString() : ''
+    const timestamp = String(req.headers['x-slack-request-timestamp'] ?? '')
+    const signature = String(req.headers['x-slack-signature'] ?? '')
+    void slackAdapter.handleEvent(rawBody, timestamp, signature).then((result) => {
+      if (result === null) { res.status(403).json({ error: 'invalid request' }); return }
+      if (result.challenge !== undefined) { res.json({ challenge: result.challenge }); return }
+      res.json({ ok: true })
+    }).catch((err: unknown) => {
+      res.status(500).json({ error: String(err) })
+    })
+  })
+  app.use(express.json())
+  app.use(createRouter())
+  const server = createServer(app)
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address() as AddressInfo
+  try {
+    await fn(`http://127.0.0.1:${port}`)
+  } finally {
+    await new Promise<void>(resolve => server.close(() => resolve()))
+  }
+}
 const mockPublish = vi.mocked(publish)
 
 // Spin up a real HTTP server on a random port for each test.
@@ -126,6 +162,75 @@ describe('HTTP approval routes', () => {
         const second = await fetch(`${base}/reject/fb-r`, { method: 'POST' })
         expect(second.status).toBe(429)
       })
+    })
+  })
+})
+
+describe('POST /slack/events', () => {
+  const secret = 'slack-signing-secret'
+
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('returns 403 on invalid signature', async () => {
+    const adapter = new SlackAdapter('token', 'chan', secret)
+    const timestamp = String(Math.floor(Date.now() / 1000))
+    await withSlackServer(adapter, async (base) => {
+      const res = await fetch(`${base}/slack/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-slack-request-timestamp': timestamp,
+          'x-slack-signature': 'v0=badsignature',
+        },
+        body: '{}',
+      })
+      expect(res.status).toBe(403)
+    })
+  })
+
+  it('responds to URL verification challenge', async () => {
+    const adapter = new SlackAdapter('token', 'chan', secret)
+    const timestamp = String(Math.floor(Date.now() / 1000))
+    const body = JSON.stringify({ type: 'url_verification', challenge: 'xyz789' })
+    const sig = slackSignature(secret, timestamp, body)
+    await withSlackServer(adapter, async (base) => {
+      const res = await fetch(`${base}/slack/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-slack-request-timestamp': timestamp,
+          'x-slack-signature': sig,
+        },
+        body,
+      })
+      expect(res.status).toBe(200)
+      const json = await res.json() as { challenge: string }
+      expect(json.challenge).toBe('xyz789')
+    })
+  })
+
+  it('returns 200 ok for valid event_callback', async () => {
+    const adapter = new SlackAdapter('token', 'chan', secret)
+    vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+    const timestamp = String(Math.floor(Date.now() / 1000))
+    const body = JSON.stringify({
+      type: 'event_callback',
+      event: { type: 'reaction_added' },
+    })
+    const sig = slackSignature(secret, timestamp, body)
+    await withSlackServer(adapter, async (base) => {
+      const res = await fetch(`${base}/slack/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-slack-request-timestamp': timestamp,
+          'x-slack-signature': sig,
+        },
+        body,
+      })
+      expect(res.status).toBe(200)
+      const json = await res.json() as { ok: boolean }
+      expect(json.ok).toBe(true)
     })
   })
 })

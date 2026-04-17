@@ -103,6 +103,7 @@ TELEGRAM_BOT_TOKEN               optional  gateway Telegram adapter
 TELEGRAM_CHAT_ID                 optional
 SLACK_BOT_TOKEN                  optional  gateway Slack adapter
 SLACK_CHANNEL_ID                 optional
+SLACK_SIGNING_SECRET             optional  enables Slack inbound (/approve, /reject via Events API)
 OURO_WEBHOOK_URL                 optional  generic outbound webhook
 PORT_UI                          optional  default 7702
 PORT_MCP_FACTORY                 optional  default 7703
