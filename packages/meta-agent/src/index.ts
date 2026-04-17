@@ -6,8 +6,10 @@ import { startScheduler } from './loops/scheduler.js'
 import { watchdogLoop, makeMetaAgentState } from './loops/watchdog.js'
 import { spawnCoordinator, clearSessionId, loadSessionId, isValidUUID } from './coordinator.js'
 
-// Coordinator exits in under this many ms → assume the session UUID was invalid/expired
-const FAST_EXIT_THRESHOLD_MS = 10_000
+// Coordinator exits with no stdout output → session was stale/expired, clear it.
+// Time alone is unreliable: healthy cycles can complete in <10s. Output presence is
+// the real signal — if the coordinator produced any output it did real work.
+const FAST_EXIT_THRESHOLD_MS = 8_000
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -16,19 +18,24 @@ function sleep(ms: number): Promise<void> {
 async function runCoordinatorLoop(): Promise<void> {
   while (true) {
     const spawnedAt = Date.now()
+    let hadOutput = false
     try {
       const proc = await spawnCoordinator()
+      // spawnCoordinator already attaches a data listener for logging; we add a
+      // second one here just to track whether any output arrived.
+      proc.stdout?.on('data', () => { hadOutput = true })
       await new Promise<void>(resolve => proc.once('exit', () => resolve()))
     } catch (err) {
       await log('meta-agent', `Coordinator spawn error: ${String(err)}`)
     }
-    // If a UUID-based session exited suspiciously fast, the session ID is probably
-    // stale (expired or never found). Clear it so the next cycle starts fresh.
+    // Clear the session only when the coordinator produced no output AND exited
+    // suspiciously fast — strong signal that the session ID was stale.
     const elapsed = Date.now() - spawnedAt
-    if (elapsed < FAST_EXIT_THRESHOLD_MS) {
+    if (!hadOutput && elapsed < FAST_EXIT_THRESHOLD_MS) {
       const sid = loadSessionId()
-      if (sid && isValidUUID(sid)) {
-        await log('meta-agent', `Coordinator exited after ${elapsed}ms — clearing stale session ${sid}`)
+      if (sid) {
+        const label = isValidUUID(sid) ? `stale session ${sid}` : `legacy session marker ("${sid}")`
+        await log('meta-agent', `Coordinator exited after ${elapsed}ms with no output — clearing ${label}`)
         clearSessionId()
       }
     }
