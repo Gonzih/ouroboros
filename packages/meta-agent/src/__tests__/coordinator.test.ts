@@ -152,6 +152,20 @@ describe('coordinator', () => {
       const prompt = buildCoordinatorPrompt()
       expect(prompt).toContain('merge_failed')
     })
+
+    it('references list_feedback for pending and pr_open inspection', () => {
+      const prompt = buildCoordinatorPrompt()
+      expect(prompt).toContain('list_feedback')
+    })
+
+    it('references schedule management tools', () => {
+      const prompt = buildCoordinatorPrompt()
+      expect(prompt).toContain('list_schedules')
+      expect(prompt).toContain('create_schedule')
+      expect(prompt).toContain('update_schedule')
+      expect(prompt).toContain('toggle_schedule')
+      expect(prompt).toContain('delete_schedule')
+    })
   })
 
   describe('spawnCoordinator', () => {
