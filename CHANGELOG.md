@@ -1,3 +1,24 @@
+## v2.3.5 — evolution restart resume
+
+- meta-agent/evolution: `startEvolution()` now queries `ouro_feedback WHERE status='pr_open' AND queue_msg_id IS NOT NULL` on startup and resumes `pollForApproval` for any in-flight PRs. Previously a meta-agent restart would silently drop approval pollers for open PRs, meaning users had to re-approve or re-submit. Now approval polling survives process restarts transparently.
+- core: migration `005_feedback_msg_id.sql` — `queue_msg_id BIGINT` column on `ouro_feedback`. `processOneFeedback` writes the pgmq message ID to this column before spawning the poller so it can be recovered after a restart.
+- Tests: `startEvolution` tests adapted to mock the DB resume query. meta-agent: 117 tests. Total: 516.
+
+## v2.3.4 — watchdog data retention + pruning index
+
+- meta-agent/watchdog: `pruneOldData()` added to `watchdogTick` — deletes `ouro_logs` older than 30 days and `ouro_job_output` for completed/failed/cancelled jobs older than 7 days. Each DELETE is counted and only logged when rows are actually removed, keeping the logs clean on idle systems. The two prune operations run independently — an error in one does not block the other.
+- core: migration `006_pruning_indexes.sql` — partial index on `ouro_jobs(status, completed_at)` so the watchdog prune subquery uses an index scan instead of a full seq scan on long-running installs.
+- Tests: 5 new watchdog prune tests (log prune count, output prune count, log error continues, output error continues, no-log when nothing pruned). meta-agent: 117 tests. Total: 516.
+
+## v2.3.3 — Discord slash command auto-registration
+
+- gateway/discord: `DISCORD_APPLICATION_ID` env var enables automatic slash command registration on startup. When set, `DiscordAdapter.start()` calls `registerCommands()` which PUTs all 8 commands to the Discord Applications API. Without it, the adapter starts normally with no registration attempt.
+- gateway/discord: `registerCommands()` public method — `PUT /applications/{appId}/commands` with the full command list. Private `request()` helper refactored so both `post` and `put` share the same implementation.
+- gateway/index: `DISCORD_APPLICATION_ID` passed as 4th arg to `DiscordAdapter` constructor.
+- `.env.example` and `CLAUDE.md`: `DISCORD_APPLICATION_ID` documented.
+- Tests: 5 new tests (start calls registerCommands, start skips without appId, failure logged, PUT payload, no-op without appId). gateway: 137 tests. Total: 511.
+- chore: all package versions bumped to 2.3.3.
+
 ## v2.3.2 — fix: chat adapter approve/reject now publishes ouro_notify events
 
 - gateway: `TelegramAdapter.handleApprove/handleReject` now publishes `evolution_approved` / `evolution_rejected` to `ouro_notify` after a successful DB update. Previously only the HTTP gateway endpoints (`POST /approve/:id`, `/reject/:id`) and the UI server did this, so approving via Telegram/Slack/Discord chat never triggered cross-channel broadcast of the confirmation.

@@ -254,6 +254,12 @@
 - [x] core: migration `005_feedback_msg_id.sql` — `queue_msg_id BIGINT` column on `ouro_feedback`; `processOneFeedback` writes `msgId` to DB before spawning poller
 - [x] Tests: adapted `startEvolution` tests to mock the DB resume query. meta-agent: 117 tests.
 
+## v2.3.5-housekeeping ✅ complete
+
+- [x] chore: bump all package.json versions 2.3.3 → 2.3.5
+- [x] coordinator.ts: version string updated to v2.3.5
+- [x] CHANGELOG.md: add missing entries for v2.3.3, v2.3.4, v2.3.5
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action
