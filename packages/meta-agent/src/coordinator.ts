@@ -32,7 +32,7 @@ Your job:
 5. MCP awareness — list_mcps() to know what data sources are connected.
 
 Be autonomous. Act on what needs action. Check state periodically. When you finish a cycle, wait a moment then check again.
-The system is Ouroboros v1.0.1. Running with --continue so your context persists across restarts.`
+The system is Ouroboros v1.1.0. Running with --continue so your context persists across restarts.`
 }
 
 export async function spawnCoordinator(): Promise<ChildProcess> {
