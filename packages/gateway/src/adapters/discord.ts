@@ -11,8 +11,8 @@ export type { ChannelAdapter }
 const ED25519_SPKI_HEADER = Buffer.from('302a300506032b6570032100', 'hex')
 
 // Posts messages to Discord via the channels API (requires DISCORD_BOT_TOKEN + DISCORD_CHANNEL_ID).
-// When DISCORD_PUBLIC_KEY is provided, also handles inbound Interactions API events so that
-// /approve and /reject commands can be issued from Discord (same parity as Telegram and Slack).
+// When DISCORD_PUBLIC_KEY is provided, also handles inbound Interactions API events:
+// /approve, /reject, /status, /jobs, /mcp slash commands (full parity with Telegram).
 export class DiscordAdapter implements ChannelAdapter {
   readonly name = 'discord'
   private token: string
@@ -108,6 +108,10 @@ export class DiscordAdapter implements ChannelAdapter {
         const content = await this.handleJobs()
         return { type: 4, data: { content } }
       }
+      if (commandName === 'mcp') {
+        const content = await this.handleMcp()
+        return { type: 4, data: { content } }
+      }
     }
 
     // Unknown interaction type — acknowledge with PONG to avoid Discord timeout errors
@@ -185,6 +189,26 @@ export class DiscordAdapter implements ChannelAdapter {
     } catch (err: unknown) {
       await log('gateway:discord', `jobs error: ${String(err)}`)
       return `Error fetching jobs: ${String(err)}`
+    }
+  }
+
+  private async handleMcp(): Promise<string> {
+    try {
+      const db = getDb()
+      const mcps = await db<{ name: string; status: string; tools_found: string[] | null }[]>`
+        SELECT name, status, tools_found
+        FROM ouro_mcp_registry
+        ORDER BY registered_at DESC
+      `
+      if (mcps.length === 0) return 'No MCPs registered.'
+      const lines = mcps.map(m => {
+        const tools = m.tools_found?.join(', ') ?? 'none'
+        return `• [${m.status}] ${m.name} — tools: ${tools}`
+      })
+      return `Registered MCPs:\n${lines.join('\n')}`
+    } catch (err: unknown) {
+      await log('gateway:discord', `mcp error: ${String(err)}`)
+      return `Error fetching MCPs: ${String(err)}`
     }
   }
 

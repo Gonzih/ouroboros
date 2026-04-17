@@ -684,6 +684,18 @@ describe('ChannelAdapter implementations', () => {
         expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('j1')
       })
 
+      it('handles /mcp command', async () => {
+        const mockDb = vi.fn().mockResolvedValue([
+          { name: 'pg-mcp', status: 'operational', tools_found: ['query', 'schema'] },
+        ])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({ type: 2, data: { name: 'mcp', options: [] } })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('pg-mcp')
+      })
+
       it('returns PONG for unknown interaction type', async () => {
         const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
         const body = JSON.stringify({ type: 99 })
