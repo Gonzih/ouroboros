@@ -117,15 +117,32 @@ describe('handleJobTool', () => {
     )
   })
 
-  it('cancel_job returns cancelled: true when rows updated', async () => {
-    mockGetDb.mockReturnValue(makeDbMock([{ id: 'j1' }]))
+  it('cancel_job cancels pending job immediately', async () => {
+    // First query (pending UPDATE) returns a row → returns early
+    const fn = vi.fn().mockResolvedValueOnce([{ id: 'j1' }])
+    mockGetDb.mockReturnValue(fn as unknown as ReturnType<typeof getDb>)
     const result = await handleJobTool('cancel_job', { job_id: 'j1' })
     const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
     expect((parsed as Record<string, unknown>)['cancelled']).toBe(true)
+    expect(fn).toHaveBeenCalledTimes(1)
   })
 
-  it('cancel_job returns cancelled: false when no rows updated', async () => {
-    mockGetDb.mockReturnValue(makeDbMock([]))
+  it('cancel_job sets cancellation_requested for running job', async () => {
+    // First query (pending UPDATE) returns nothing; second (running UPDATE) returns row
+    const fn = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'j2' }])
+    mockGetDb.mockReturnValue(fn as unknown as ReturnType<typeof getDb>)
+    const result = await handleJobTool('cancel_job', { job_id: 'j2' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['cancelled']).toBe(true)
+    expect(fn).toHaveBeenCalledTimes(2)
+  })
+
+  it('cancel_job returns cancelled: false for terminal jobs', async () => {
+    // Both queries return nothing
+    const fn = vi.fn().mockResolvedValue([])
+    mockGetDb.mockReturnValue(fn as unknown as ReturnType<typeof getDb>)
     const result = await handleJobTool('cancel_job', { job_id: 'already-done' })
     const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
     expect((parsed as Record<string, unknown>)['cancelled']).toBe(false)

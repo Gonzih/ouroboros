@@ -186,7 +186,17 @@ describe('UI REST API routes', () => {
   })
 
   describe('POST /api/jobs/:id/cancel', () => {
-    it('cancels a running job and publishes notify', async () => {
+    it('cancels a pending job immediately', async () => {
+      mockDb.mockResolvedValueOnce({ count: 1 })
+      const res = await request(app).post('/api/jobs/j1/cancel')
+      expect(res.status).toBe(200)
+      expect(res.body.ok).toBe(true)
+      expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({ type: 'job_cancel_requested', jobId: 'j1' }))
+    })
+
+    it('sets cancellation_requested for a running job', async () => {
+      // pending UPDATE returns 0 rows, running UPDATE returns 1 row
+      mockDb.mockResolvedValueOnce({ count: 0 })
       mockDb.mockResolvedValueOnce({ count: 1 })
       const res = await request(app).post('/api/jobs/j1/cancel')
       expect(res.status).toBe(200)
@@ -195,6 +205,8 @@ describe('UI REST API routes', () => {
     })
 
     it('returns 409 when job is already in terminal state', async () => {
+      // both UPDATEs return 0 rows, SELECT returns the terminal status
+      mockDb.mockResolvedValueOnce({ count: 0 })
       mockDb.mockResolvedValueOnce({ count: 0 })
       mockDb.mockResolvedValueOnce([{ status: 'completed' }])
       const res = await request(app).post('/api/jobs/j1/cancel')
@@ -203,6 +215,8 @@ describe('UI REST API routes', () => {
     })
 
     it('returns 404 when job does not exist', async () => {
+      // both UPDATEs return 0 rows, SELECT returns empty
+      mockDb.mockResolvedValueOnce({ count: 0 })
       mockDb.mockResolvedValueOnce({ count: 0 })
       mockDb.mockResolvedValueOnce([])
       const res = await request(app).post('/api/jobs/no-such-job/cancel')

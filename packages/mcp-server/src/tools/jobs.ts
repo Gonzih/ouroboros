@@ -16,7 +16,7 @@ export const jobTools = [
       properties: {
         status: {
           type: 'string',
-          enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
+          enum: ['pending', 'running', 'completed', 'failed', 'cancelled', 'cancellation_requested'],
           description: 'Filter by status (omit for all)',
         },
         limit: { type: 'number', description: 'Max rows to return (default 20)' },
@@ -55,7 +55,7 @@ export const jobTools = [
         description: { type: 'string', description: 'Human-readable description of the task' },
         backend: {
           type: 'string',
-          enum: ['git', 'local'],
+          enum: ['git', 'local', 's3', 'gdrive', 'onedrive'],
           description: 'Storage backend for the worker',
         },
         target: { type: 'string', description: 'Target path or repository URL' },
@@ -142,12 +142,21 @@ export async function handleJobTool(
 
   if (name === 'cancel_job') {
     const jobId = typeof a['job_id'] === 'string' ? a['job_id'] : ''
-    const rows = await db<{ id: string }[]>`
-      UPDATE ouro_jobs SET status = 'cancelled'
-      WHERE id = ${jobId} AND status IN ('pending', 'running')
+    // Pending jobs can be cancelled immediately; running jobs get cancellation_requested
+    // so the worker-dispatch watchdog can send SIGTERM and clean up properly.
+    const pendingRows = await db<{ id: string }[]>`
+      UPDATE ouro_jobs SET status = 'cancelled', completed_at = NOW()
+      WHERE id = ${jobId} AND status = 'pending'
       RETURNING id
     `
-    return textResult(JSON.stringify({ cancelled: rows.length > 0 }))
+    if (pendingRows.length > 0) return textResult(JSON.stringify({ cancelled: true }))
+
+    const runningRows = await db<{ id: string }[]>`
+      UPDATE ouro_jobs SET status = 'cancellation_requested'
+      WHERE id = ${jobId} AND status = 'running'
+      RETURNING id
+    `
+    return textResult(JSON.stringify({ cancelled: runningRows.length > 0 }))
   }
 
   throw new Error(`Unknown job tool: ${name}`)

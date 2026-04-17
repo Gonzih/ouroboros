@@ -182,12 +182,23 @@ apiRouter.post('/jobs/:id/cancel', async (req, res) => {
   if (!id) { res.status(400).json({ error: 'id required' }); return }
   try {
     const db = getDb()
-    const result = await db`
-      UPDATE ouro_jobs
-      SET status = 'cancellation_requested'
-      WHERE id = ${id} AND status IN ('pending', 'running')
+    // Pending jobs can be cancelled immediately; running jobs need the watchdog
+    // to send SIGTERM, so set cancellation_requested and let worker-dispatch clean up.
+    const pendingResult = await db`
+      UPDATE ouro_jobs SET status = 'cancelled', completed_at = NOW()
+      WHERE id = ${id} AND status = 'pending'
     `
-    if (result.count === 0) {
+    if (pendingResult.count > 0) {
+      await publish('ouro_notify', { type: 'job_cancel_requested', jobId: id })
+      await log('ui', `cancelled pending job ${id}`)
+      res.json({ ok: true })
+      return
+    }
+    const runningResult = await db`
+      UPDATE ouro_jobs SET status = 'cancellation_requested'
+      WHERE id = ${id} AND status = 'running'
+    `
+    if (runningResult.count === 0) {
       const rows = await db<{ status: string }[]>`SELECT status FROM ouro_jobs WHERE id = ${id}`
       if (rows.length === 0) { res.status(404).json({ error: 'job not found' }); return }
       res.status(409).json({ error: 'job already in terminal state', status: rows[0]?.status })
