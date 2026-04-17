@@ -165,7 +165,7 @@ describe('worker-dispatch', () => {
     void startWorkerDispatch()
     await flush(20)
 
-    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]) => e === 'close')
     expect(closeCbCall).toBeDefined()
     const closeCb = closeCbCall![1] as (code: number) => void
     closeCb(0)
@@ -190,7 +190,7 @@ describe('worker-dispatch', () => {
     // the first 'line' callback registered is the stdout handler
     const rlMock = mockCreateInterface.mock.results[0]?.value as { on: ReturnType<typeof vi.fn> }
     expect(rlMock).toBeDefined()
-    const lineCbCall = rlMock.on.mock.calls.find(([e]: [string]) => e === 'line')
+    const lineCbCall = rlMock.on.mock.calls.find(([e]) => e === 'line')
     expect(lineCbCall).toBeDefined()
     const lineCb = lineCbCall![1] as (line: string) => void
 
@@ -214,7 +214,7 @@ describe('worker-dispatch', () => {
     void startWorkerDispatch()
     await flush(20)
 
-    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]) => e === 'close')
     expect(closeCbCall).toBeDefined()
     const closeCb = closeCbCall![1] as (code: number) => void
     closeCb(1)
@@ -239,7 +239,7 @@ describe('worker-dispatch', () => {
     void startWorkerDispatch()
     await flush(20)
 
-    const errCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'error')
+    const errCbCall = fakeProc.on.mock.calls.find(([e]) => e === 'error')
     expect(errCbCall).toBeDefined()
     const errCb = errCbCall![1] as (err: Error) => void
     errCb(new Error('spawn ENOENT'))
@@ -294,7 +294,7 @@ describe('worker-dispatch', () => {
     void startWorkerDispatch()
     await flush(20)
 
-    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]) => e === 'close')
     const closeCb = closeCbCall![1] as (code: number) => void
     closeCb(0)
     await flush(20)
@@ -318,7 +318,7 @@ describe('worker-dispatch', () => {
     void startWorkerDispatch()
     await flush(20)
 
-    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]) => e === 'close')
     const closeCb = closeCbCall![1] as (code: number) => void
     closeCb(1)
     await flush(20)
@@ -344,13 +344,13 @@ describe('worker-dispatch', () => {
     // Both rl and rlErr receive the same shared mock object; 'line' is registered twice —
     // calls[0] = stdout handler, calls[1] = stderr handler.
     const rlOnMock = (mockCreateInterface.mock.results[0]?.value as { on: ReturnType<typeof vi.fn> }).on
-    const lineCalls = rlOnMock.mock.calls.filter(([e]: [string]) => e === 'line')
+    const lineCalls = rlOnMock.mock.calls.filter(([e]) => e === 'line')
     const stderrLineCb = lineCalls[1]?.[1] as ((line: string) => void) | undefined
     expect(stderrLineCb).toBeDefined()
     stderrLineCb!('Fatal error: out of memory')
     await flush()
 
-    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]) => e === 'close')
     const closeCb = closeCbCall![1] as (code: number) => void
     closeCb(1)
     await flush(20)
@@ -414,7 +414,7 @@ describe('worker-dispatch', () => {
     await flush(20)
 
     const rlMock = mockCreateInterface.mock.results[0]?.value as { on: ReturnType<typeof vi.fn> }
-    const lineCbCall = rlMock.on.mock.calls.find(([e]: [string]) => e === 'line')
+    const lineCbCall = rlMock.on.mock.calls.find(([e]) => e === 'line')
     const lineCb = lineCbCall![1] as (line: string) => void
 
     mockDb.mockRejectedValueOnce(new Error('db write failed'))

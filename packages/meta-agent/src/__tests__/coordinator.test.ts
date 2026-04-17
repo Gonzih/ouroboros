@@ -264,7 +264,7 @@ describe('coordinator', () => {
       await spawnCoordinator()
 
       const dataCall = (fakeProc.stdout.on as ReturnType<typeof vi.fn>).mock.calls
-        .find(([e]: [string]) => e === 'data')
+        .find(([e]) => e === 'data')
       expect(dataCall).toBeDefined()
       const dataCb = dataCall![1] as (data: Buffer) => void
 
@@ -284,7 +284,7 @@ describe('coordinator', () => {
       await spawnCoordinator()
 
       const dataCall = (fakeProc.stdout.on as ReturnType<typeof vi.fn>).mock.calls
-        .find(([e]: [string]) => e === 'data')
+        .find(([e]) => e === 'data')
       const dataCb = dataCall![1] as (data: Buffer) => void
 
       mockLog.mockClear()
@@ -301,7 +301,7 @@ describe('coordinator', () => {
       await spawnCoordinator()
 
       const dataCall = (fakeProc.stderr.on as ReturnType<typeof vi.fn>).mock.calls
-        .find(([e]: [string]) => e === 'data')
+        .find(([e]) => e === 'data')
       expect(dataCall).toBeDefined()
       const dataCb = dataCall![1] as (data: Buffer) => void
 
@@ -320,7 +320,7 @@ describe('coordinator', () => {
       await spawnCoordinator()
 
       const dataCall = (fakeProc.stderr.on as ReturnType<typeof vi.fn>).mock.calls
-        .find(([e]: [string]) => e === 'data')
+        .find(([e]) => e === 'data')
       const dataCb = dataCall![1] as (data: Buffer) => void
 
       mockLog.mockClear()

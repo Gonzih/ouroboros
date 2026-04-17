@@ -10,3 +10,4 @@ dist/
 *.tsbuildinfo
 .ouro-session
 logs/
+coverage/
