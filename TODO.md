@@ -95,6 +95,13 @@
 
 - [x] Bump all package versions (core, gateway, mcp-factory, worker, meta-agent, ui) from 0.8.0 to 1.0.0 — were missed during v0.9.0 and v1.0.0 releases
 
+## v1.2.1 — persist instructions on job row ✅ complete
+
+- [x] core: migration `004_job_instructions.sql` — `instructions TEXT` column on `ouro_jobs`
+- [x] mcp-server/jobs: `spawn_worker` writes instructions to DB row; `get_job_status` returns them
+- [x] ui: `/task` POST stores instructions; retry uses stored instructions (fallback to description)
+- [x] Tests: +1 retry test (instructions preferred over description). Total: 234 tests
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

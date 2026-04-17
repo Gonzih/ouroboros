@@ -119,8 +119,9 @@ export async function handleJobTool(
       started_at: Date | null
       completed_at: Date | null
       error: string | null
+      instructions: string | null
     }[]>`
-      SELECT status, started_at, completed_at, error FROM ouro_jobs WHERE id = ${jobId}
+      SELECT status, started_at, completed_at, error, instructions FROM ouro_jobs WHERE id = ${jobId}
     `
     const row = rows[0]
     if (!row) return textResult(JSON.stringify({ error: 'job not found' }))
@@ -135,8 +136,8 @@ export async function handleJobTool(
     const id = randomUUID()
 
     await db`
-      INSERT INTO ouro_jobs (id, description, backend, target, status)
-      VALUES (${id}, ${description}, ${backend}, ${target}, 'pending')
+      INSERT INTO ouro_jobs (id, description, backend, target, status, instructions)
+      VALUES (${id}, ${description}, ${backend}, ${target}, 'pending', ${instructions})
     `
     await enqueue('ouro_tasks', { id, backend, target, instructions })
     await log('mcp-server', `spawned worker job ${id}: ${description}`)

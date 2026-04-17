@@ -172,8 +172,8 @@ apiRouter.post('/task', async (req, res) => {
     const db = getDb()
     const id = randomUUID()
     await db`
-      INSERT INTO ouro_jobs (id, description, backend, target, status)
-      VALUES (${id}, ${instructions}, ${backend}, ${target}, 'pending')
+      INSERT INTO ouro_jobs (id, description, backend, target, status, instructions)
+      VALUES (${id}, ${instructions}, ${backend}, ${target}, 'pending', ${instructions})
     `
     await enqueue('ouro_tasks', { id, backend, target, instructions })
     res.json({ id })
@@ -222,8 +222,8 @@ apiRouter.post('/jobs/:id/retry', async (req, res) => {
   if (!id) { res.status(400).json({ error: 'id required' }); return }
   try {
     const db = getDb()
-    const rows = await db<{ description: string; backend: string; target: string; status: string }[]>`
-      SELECT description, backend, target, status FROM ouro_jobs WHERE id = ${id}
+    const rows = await db<{ description: string; backend: string; target: string; status: string; instructions: string | null }[]>`
+      SELECT description, backend, target, status, instructions FROM ouro_jobs WHERE id = ${id}
     `
     if (rows.length === 0) { res.status(404).json({ error: 'job not found' }); return }
     const job = rows[0]!
@@ -231,12 +231,13 @@ apiRouter.post('/jobs/:id/retry', async (req, res) => {
       res.status(409).json({ error: 'can only retry failed or cancelled jobs', status: job.status })
       return
     }
+    const jobInstructions = job.instructions ?? job.description
     const newId = randomUUID()
     await db`
-      INSERT INTO ouro_jobs (id, description, backend, target, status)
-      VALUES (${newId}, ${job.description}, ${job.backend}, ${job.target}, 'pending')
+      INSERT INTO ouro_jobs (id, description, backend, target, status, instructions)
+      VALUES (${newId}, ${job.description}, ${job.backend}, ${job.target}, 'pending', ${jobInstructions})
     `
-    await enqueue('ouro_tasks', { id: newId, backend: job.backend, target: job.target, instructions: job.description })
+    await enqueue('ouro_tasks', { id: newId, backend: job.backend, target: job.target, instructions: jobInstructions })
     await log('ui', `retrying job ${id} as new job ${newId}`)
     res.json({ id: newId })
   } catch (err: unknown) {

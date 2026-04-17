@@ -1,3 +1,10 @@
+## v1.2.1 — persist instructions on job row
+
+- core: migration `004_job_instructions.sql` — adds `instructions TEXT` column to `ouro_jobs`; existing rows get NULL which the retry path handles gracefully.
+- mcp-server/jobs: `spawn_worker` now stores the `instructions` field in the job row (previously only in the pgmq queue message); `get_job_status` returns `instructions` alongside status/timing/error.
+- ui: `POST /api/task` stores instructions in the job row; `POST /api/jobs/:id/retry` reads the stored instructions and re-enqueues them (falls back to `description` for rows created before this version).
+- Tests: 1 new retry test confirming stored instructions are used in preference to description. Total: 234 tests.
+
 ## v1.2.0 — schedule editing + job pagination + extended backend support
 
 - mcp-server/schedules: new `update_schedule` MCP tool — updates any subset of a schedule's fields (name, cron_expr, backend, target, instructions) with partial-update semantics; omitted fields keep their current values. Changing `cron_expr` recomputes `next_run_at` via croner. Returns `{ error }` on invalid cron or unknown ID without throwing.

@@ -181,14 +181,31 @@ describe('UI REST API routes', () => {
   })
 
   describe('POST /api/jobs/:id/retry', () => {
-    it('retries a failed job and enqueues a new task', async () => {
+    it('retries a failed job and enqueues a new task (falls back to description when instructions null)', async () => {
       mockDb
-        .mockResolvedValueOnce([{ description: 'Fix bug', backend: 'git', target: 'https://github.com/owner/repo', status: 'failed' }])
+        .mockResolvedValueOnce([{ description: 'Fix bug', backend: 'git', target: 'https://github.com/owner/repo', status: 'failed', instructions: null }])
         .mockResolvedValueOnce([])
       const res = await request(app).post('/api/jobs/j1/retry')
       expect(res.status).toBe(200)
       expect(typeof res.body.id).toBe('string')
       expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({ backend: 'git', instructions: 'Fix bug' }))
+    })
+
+    it('retries a job using stored instructions when they differ from description', async () => {
+      mockDb
+        .mockResolvedValueOnce([{
+          description: 'run tests',
+          backend: 'local',
+          target: '/tmp/work',
+          status: 'cancelled',
+          instructions: 'Run npm test in /packages/core and report each failure with its error message',
+        }])
+        .mockResolvedValueOnce([])
+      const res = await request(app).post('/api/jobs/j1/retry')
+      expect(res.status).toBe(200)
+      expect(mockEnqueue).toHaveBeenCalledWith('ouro_tasks', expect.objectContaining({
+        instructions: 'Run npm test in /packages/core and report each failure with its error message',
+      }))
     })
 
     it('returns 409 when job is not in a retryable state', async () => {

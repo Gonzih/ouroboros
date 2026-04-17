@@ -1,6 +1,6 @@
 {
   "name": "@ouroboros/core",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Shared types, Postgres client, logger, event bus",
   "type": "module",
   "main": "./dist/index.js",
