@@ -66,11 +66,6 @@ export async function spawnCoordinator(): Promise<ChildProcess> {
     for (const line of text.split('\n')) {
       const trimmed = line.trim()
       if (trimmed) void log('coordinator', trimmed)
-
-      // Parse session ID from Claude output metadata if present
-      const match = /session[_-]?id[:\s]+([a-f0-9-]{36})/i.exec(trimmed)
-      const matched = match?.[1]
-      if (matched) saveSessionId(matched)
     }
   })
 
