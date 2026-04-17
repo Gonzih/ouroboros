@@ -102,6 +102,13 @@
 - [x] ui: `/task` POST stores instructions; retry uses stored instructions (fallback to description)
 - [x] Tests: +1 retry test (instructions preferred over description). Total: 234 tests
 
+## v1.3.0 — service self-registration + watchdog activation ✅ complete
+
+- [x] gateway: `registerProcess('gateway', pid, ...)` on startup + 30 s heartbeat + `unregisterProcess` on shutdown
+- [x] ui: same pattern — `registerProcess('ui', ...)` + heartbeat + unregister on shutdown
+- [x] meta-agent/coordinator: version string updated to v1.3.0
+- [x] Tests: 4 new startup tests (gateway + UI register/unregister). Total: 241 tests
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

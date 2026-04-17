@@ -1,4 +1,4 @@
-import { migrate, closeDb, log } from '@ouroboros/core'
+import { migrate, closeDb, log, registerProcess, unregisterProcess, heartbeat } from '@ouroboros/core'
 import { LogAdapter } from './adapters/log.js'
 import { TelegramAdapter } from './adapters/telegram.js'
 import { SlackAdapter } from './adapters/slack.js'
@@ -40,8 +40,13 @@ export async function start(): Promise<void> {
 
   const gateway = new Gateway(adapters)
 
+  await registerProcess('gateway', process.pid, 'node', process.argv.slice(1))
+  const heartbeatInterval = setInterval(() => { void heartbeat('gateway') }, 30_000)
+
   const shutdown = async (): Promise<void> => {
+    clearInterval(heartbeatInterval)
     await log('gateway', 'shutting down')
+    await unregisterProcess('gateway')
     await gateway.stop()
     await closeDb()
     process.exit(0)

@@ -1,3 +1,11 @@
+## v1.3.0 — service self-registration + watchdog activation
+
+- gateway: `start()` now calls `registerProcess('gateway', pid, 'node', argv)` after `startHttpServer()` and emits a 30 s heartbeat via `setInterval`. `unregisterProcess('gateway')` is called in the shutdown handler before process exit, so the watchdog's row is removed cleanly.
+- ui: `start()` mirrors the same pattern — `registerProcess('ui', ...)` after the HTTP server binds, heartbeat every 30 s, `unregisterProcess('ui')` in the SIGTERM/SIGINT shutdown handler.
+- meta-agent/coordinator: version string updated to v1.3.0.
+- This activates the watchdog's service restart branch (loop 4 step 2): it now has rows to query, so dead gateway/UI processes will be detected and respawned without manual intervention.
+- Tests: 4 new tests (2 gateway startup: registers on start, unregisters on SIGTERM; 2 UI startup: same). Total: 241 tests.
+
 ## v1.2.1 — persist instructions on job row
 
 - core: migration `004_job_instructions.sql` — adds `instructions TEXT` column to `ouro_jobs`; existing rows get NULL which the retry path handles gracefully.

@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { server, broadcast, mountRoutes } from './app.js'
-import { subscribe, log } from '@ouroboros/core'
+import { subscribe, log, registerProcess, unregisterProcess, heartbeat } from '@ouroboros/core'
 
 const PORT = parseInt(process.env['PORT_UI'] ?? '7702', 10)
 
@@ -19,7 +19,12 @@ export async function start(): Promise<void> {
     })
   })
 
+  await registerProcess('ui', process.pid, 'node', process.argv.slice(1))
+  const heartbeatInterval = setInterval(() => { void heartbeat('ui') }, 30_000)
+
   const shutdown = async (): Promise<void> => {
+    clearInterval(heartbeatInterval)
+    await unregisterProcess('ui')
     await unsub()
     server.close()
     process.exit(0)
