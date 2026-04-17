@@ -242,6 +242,18 @@
 - [x] Tests: 5 new tests (start calls registerCommands, start skips without appId, failure logged, PUT payload, no-op without appId). gateway: 137 tests. Total: 511
 - [x] chore: bump all package.json + internal version strings to 2.3.3
 
+## v2.3.4 — watchdog data retention + pruning index ✅ complete
+
+- [x] meta-agent/watchdog: `pruneOldData()` step added to `watchdogTick` — deletes `ouro_logs` older than 30 days and `ouro_job_output` for completed/failed/cancelled jobs older than 7 days; each DELETE counts rows and logs only when something is pruned; errors caught independently so one failure does not block the other
+- [x] Tests: 5 new watchdog prune tests (log prune count, output prune count, log error continues, output error continues, no-log when nothing pruned). meta-agent: 117 tests. Total: 516
+- [x] core: migration `006_pruning_indexes.sql` — partial index on `ouro_jobs(status, completed_at)` so the watchdog prune subquery uses an index scan instead of a full seq scan on long-running installs
+
+## v2.3.5 — evolution restart resume ✅ complete
+
+- [x] meta-agent/evolution: `startEvolution()` queries `ouro_feedback WHERE status='pr_open' AND queue_msg_id IS NOT NULL` on startup — resumes `pollForApproval` for any in-flight PRs so approval polling survives process restarts
+- [x] core: migration `005_feedback_msg_id.sql` — `queue_msg_id BIGINT` column on `ouro_feedback`; `processOneFeedback` writes `msgId` to DB before spawning poller
+- [x] Tests: adapted `startEvolution` tests to mock the DB resume query. meta-agent: 117 tests.
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action
