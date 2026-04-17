@@ -269,6 +269,22 @@ describe('ChannelAdapter implementations', () => {
         expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('Error rejecting'))
       })
 
+      it('handles /logs command and sends recent logs', async () => {
+        const mockDb = vi.fn().mockResolvedValue([
+          { source: 'worker', message: 'task completed', ts: new Date() },
+        ])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new SlackAdapter('token', 'chan', secret)
+        vi.spyOn(adapter, 'send').mockResolvedValue(undefined)
+        const body = JSON.stringify({
+          type: 'event_callback',
+          event: { type: 'message', text: '/logs' },
+        })
+        const sig = slackSignature(secret, timestamp, body)
+        await adapter.handleEvent(body, timestamp, sig)
+        expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('worker'))
+      })
+
       it('returns {} when signature buffers have different lengths', async () => {
         const adapter = new SlackAdapter('token', 'chan', secret)
         // A valid-format sig but intentionally short
@@ -566,6 +582,30 @@ describe('ChannelAdapter implementations', () => {
       await flush()
       expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Error fetching MCPs'))
     })
+
+    it('/logs shows recent log entries', async () => {
+      const mockDb = vi.fn().mockResolvedValue([
+        { source: 'meta-agent', message: 'coordinator started', ts: new Date() },
+      ])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']!({ text: '/logs' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('meta-agent'))
+    })
+
+    it('/logs shows empty message when no logs', async () => {
+      const mockDb = vi.fn().mockResolvedValue([])
+      mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+      const { cbs, sendMessage } = makeBot()
+      const adapter = new TelegramAdapter('tok', '-100')
+      await adapter.start()
+      cbs['message']!({ text: '/logs' })
+      await flush()
+      expect(sendMessage).toHaveBeenCalledWith('-100', 'No logs found.')
+    })
   })
 
   describe('DiscordAdapter', () => {
@@ -694,6 +734,18 @@ describe('ChannelAdapter implementations', () => {
         const ts = String(Date.now())
         const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
         expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('pg-mcp')
+      })
+
+      it('handles /logs command', async () => {
+        const mockDb = vi.fn().mockResolvedValue([
+          { source: 'core', message: 'startup complete', ts: new Date() },
+        ])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({ type: 2, data: { name: 'logs', options: [] } })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('core')
       })
 
       it('returns PONG for unknown interaction type', async () => {

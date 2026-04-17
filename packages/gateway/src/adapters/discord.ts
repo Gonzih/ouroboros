@@ -112,6 +112,10 @@ export class DiscordAdapter implements ChannelAdapter {
         const content = await this.handleMcp()
         return { type: 4, data: { content } }
       }
+      if (commandName === 'logs') {
+        const content = await this.handleLogs()
+        return { type: 4, data: { content } }
+      }
     }
 
     // Unknown interaction type — acknowledge with PONG to avoid Discord timeout errors
@@ -189,6 +193,22 @@ export class DiscordAdapter implements ChannelAdapter {
     } catch (err: unknown) {
       await log('gateway:discord', `jobs error: ${String(err)}`)
       return `Error fetching jobs: ${String(err)}`
+    }
+  }
+
+  private async handleLogs(): Promise<string> {
+    try {
+      const db = getDb()
+      const rows = await db<{ source: string; message: string; ts: Date }[]>`
+        SELECT source, message, ts FROM ouro_logs
+        ORDER BY ts DESC LIMIT 10
+      `
+      if (rows.length === 0) return 'No logs found.'
+      const lines = rows.reverse().map(r => `[${r.source}] ${r.message}`)
+      return `Recent logs:\n${lines.join('\n')}`
+    } catch (err: unknown) {
+      await log('gateway:discord', `logs error: ${String(err)}`)
+      return `Error fetching logs: ${String(err)}`
     }
   }
 

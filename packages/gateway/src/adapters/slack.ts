@@ -99,6 +99,27 @@ export class SlackAdapter implements ChannelAdapter {
     } else if (text.startsWith('/reject ')) {
       const id = text.slice('/reject '.length).trim()
       if (id) await this.handleReject(id)
+    } else if (text === '/logs') {
+      await this.handleLogs()
+    }
+  }
+
+  private async handleLogs(): Promise<void> {
+    try {
+      const db = getDb()
+      const rows = await db<{ source: string; message: string; ts: Date }[]>`
+        SELECT source, message, ts FROM ouro_logs
+        ORDER BY ts DESC LIMIT 10
+      `
+      if (rows.length === 0) {
+        await this.send('No logs found.')
+        return
+      }
+      const lines = rows.reverse().map(r => `[${r.source}] ${r.message}`)
+      await this.send(`Recent logs:\n${lines.join('\n')}`)
+    } catch (err: unknown) {
+      await log('gateway:slack', `logs error: ${String(err)}`)
+      await this.send(`Error fetching logs: ${String(err)}`)
     }
   }
 

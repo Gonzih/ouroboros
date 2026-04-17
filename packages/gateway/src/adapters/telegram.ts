@@ -70,6 +70,8 @@ export class TelegramAdapter implements ChannelAdapter {
       await this.handleJobs()
     } else if (trimmed === '/mcp') {
       await this.handleMcp()
+    } else if (trimmed === '/logs') {
+      await this.handleLogs()
     }
     // other text: silently ignore — gateway is not a free-form input handler
   }
@@ -157,6 +159,25 @@ export class TelegramAdapter implements ChannelAdapter {
     } catch (err: unknown) {
       await log('gateway:telegram', `jobs error: ${String(err)}`)
       await this.send(`Error fetching jobs: ${String(err)}`)
+    }
+  }
+
+  private async handleLogs(): Promise<void> {
+    try {
+      const db = getDb()
+      const rows = await db<{ source: string; message: string; ts: Date }[]>`
+        SELECT source, message, ts FROM ouro_logs
+        ORDER BY ts DESC LIMIT 10
+      `
+      if (rows.length === 0) {
+        await this.send('No logs found.')
+        return
+      }
+      const lines = rows.reverse().map(r => `[${r.source}] ${r.message}`)
+      await this.send(`Recent logs:\n${lines.join('\n')}`)
+    } catch (err: unknown) {
+      await log('gateway:telegram', `logs error: ${String(err)}`)
+      await this.send(`Error fetching logs: ${String(err)}`)
     }
   }
 
