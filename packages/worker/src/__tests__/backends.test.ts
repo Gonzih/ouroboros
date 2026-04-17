@@ -56,6 +56,51 @@ describe('StorageBackend implementations', () => {
 
       delete process.env['GITHUB_TOKEN']
     })
+
+    it('run throws when spawnSync exits with non-zero status', async () => {
+      process.env['GITHUB_TOKEN'] = 'ghp_test'
+      mockSpawnSync.mockReturnValue({ ...ok, status: 128, stderr: 'Repository not found' })
+      await expect(gitBackend.prepare('https://github.com/owner/repo', 'task-err'))
+        .rejects.toThrow('exited 128')
+      delete process.env['GITHUB_TOKEN']
+    })
+
+    it('commit calls git add, commit, push and opens+merges a PR', async () => {
+      mockSpawnSync.mockReturnValue(ok)
+      await gitBackend.commit('/tmp/ouro-taskC', 'task done')
+      expect(mockSpawnSync).toHaveBeenCalledWith('git', ['add', '-A'], expect.objectContaining({ cwd: '/tmp/ouro-taskC' }))
+      expect(mockSpawnSync).toHaveBeenCalledWith('git', ['commit', '-m', 'task done'], expect.objectContaining({ cwd: '/tmp/ouro-taskC' }))
+      expect(mockSpawnSync).toHaveBeenCalledWith('git', ['push', '-u', 'origin', expect.stringContaining('feat/task')], expect.objectContaining({ cwd: '/tmp/ouro-taskC' }))
+      expect(mockSpawnSync).toHaveBeenCalledWith('gh', expect.arrayContaining(['pr', 'create']), expect.objectContaining({ cwd: '/tmp/ouro-taskC' }))
+      expect(mockSpawnSync).toHaveBeenCalledWith('gh', expect.arrayContaining(['pr', 'merge']), expect.objectContaining({ cwd: '/tmp/ouro-taskC' }))
+    })
+
+    it('cleanup removes the working directory', async () => {
+      await gitBackend.cleanup('/tmp/ouro-task-x')
+      expect(mockRmSync).toHaveBeenCalledWith('/tmp/ouro-task-x', { recursive: true, force: true })
+    })
+
+    it('run throws the process error when spawnSync returns result.error', async () => {
+      process.env['GITHUB_TOKEN'] = 'ghp_test'
+      const spawnErr = new Error('spawn ENOENT: git not found')
+      mockSpawnSync.mockReturnValue({ ...ok, error: spawnErr, status: 0 })
+      await expect(gitBackend.prepare('https://github.com/owner/repo', 'task-e1'))
+        .rejects.toThrow('spawn ENOENT')
+      delete process.env['GITHUB_TOKEN']
+    })
+
+    it('run throws with "signal" in the message when status is null and stderr is absent', async () => {
+      process.env['GITHUB_TOKEN'] = 'ghp_test'
+      mockSpawnSync.mockReturnValue({
+        ...ok,
+        status: null,
+        stderr: undefined as unknown as string,
+        signal: 'SIGKILL' as unknown as null,
+      })
+      await expect(gitBackend.prepare('https://github.com/owner/repo', 'task-sig'))
+        .rejects.toThrow('signal')
+      delete process.env['GITHUB_TOKEN']
+    })
   })
 
   describe('localBackend', () => {
@@ -73,6 +118,49 @@ describe('StorageBackend implementations', () => {
       mockExistsSync.mockReturnValue(true)
       const dir = await localBackend.prepare('/existing/dir', 'task1')
       expect(dir).toBe('/existing/dir')
+    })
+
+    it('git-initialises directory when .git folder is absent', async () => {
+      // first call: dir exists; second call: .git does not exist
+      mockExistsSync.mockReturnValueOnce(true).mockReturnValueOnce(false)
+      mockSpawnSync.mockReturnValue(ok)
+      const dir = await localBackend.prepare('/existing/no-git', 'task5')
+      expect(dir).toBe('/existing/no-git')
+      expect(mockSpawnSync).toHaveBeenCalledWith('git', ['init'], expect.objectContaining({ cwd: '/existing/no-git' }))
+      expect(mockSpawnSync).toHaveBeenCalledWith('git', ['add', '-A'], expect.objectContaining({ cwd: '/existing/no-git' }))
+      expect(mockSpawnSync).toHaveBeenCalledWith('git', ['commit', '-m', expect.stringContaining('task5')], expect.objectContaining({ cwd: '/existing/no-git' }))
+    })
+
+    it('commit calls git add -A and git commit', async () => {
+      mockSpawnSync.mockReturnValue(ok)
+      await localBackend.commit('/some/dir', 'ouro: task done')
+      expect(mockSpawnSync).toHaveBeenCalledWith('git', ['add', '-A'], expect.objectContaining({ cwd: '/some/dir' }))
+      expect(mockSpawnSync).toHaveBeenCalledWith('git', ['commit', '-m', 'ouro: task done'], expect.objectContaining({ cwd: '/some/dir' }))
+    })
+
+    it('prepare throws when spawnSync exits with non-zero status', async () => {
+      mockExistsSync.mockReturnValueOnce(true).mockReturnValueOnce(false)
+      mockSpawnSync.mockReturnValue({ ...ok, status: 128, stderr: 'init failed' })
+      await expect(localBackend.prepare('/bad/dir', 'task6')).rejects.toThrow('exited 128')
+    })
+
+    it('prepare throws when spawnSync returns a process error', async () => {
+      mockExistsSync.mockReturnValueOnce(true).mockReturnValueOnce(false)
+      const fsError = new Error('ENOENT: no such file')
+      mockSpawnSync.mockReturnValue({ ...ok, error: fsError, status: null })
+      await expect(localBackend.prepare('/bad/dir', 'task7')).rejects.toThrow('ENOENT')
+    })
+
+    it('prepare throws with "signal" when status is null and stderr is absent', async () => {
+      mockExistsSync.mockReturnValueOnce(true).mockReturnValueOnce(false)
+      mockSpawnSync.mockReturnValue({
+        ...ok,
+        error: undefined,
+        status: null,
+        stderr: undefined as unknown as string,
+        signal: 'SIGKILL' as unknown as null,
+      })
+      await expect(localBackend.prepare('/bad/dir', 'task8')).rejects.toThrow('signal')
     })
 
     it('cleanup is a no-op (does not throw)', async () => {

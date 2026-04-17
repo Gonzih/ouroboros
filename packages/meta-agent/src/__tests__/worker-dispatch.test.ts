@@ -19,16 +19,21 @@ vi.mock('node:readline', () => ({
   createInterface: vi.fn().mockReturnValue({ on: vi.fn() }),
 }))
 
-import { dequeue, nack } from '@ouroboros/core'
+import { dequeue, nack, log, publish, ack } from '@ouroboros/core'
 import { spawn } from 'node:child_process'
+import { createInterface } from 'node:readline'
 import { startWorkerDispatch } from '../loops/worker-dispatch.js'
 
 const mockDequeue = vi.mocked(dequeue)
 const mockNack = vi.mocked(nack)
+const mockAck = vi.mocked(ack)
 const mockSpawn = vi.mocked(spawn)
+const mockLog = vi.mocked(log)
+const mockPublish = vi.mocked(publish)
+const mockCreateInterface = vi.mocked(createInterface)
 
 function makeFakeProc() {
-  return { stdout: {}, stderr: {}, on: vi.fn(), pid: 98765 }
+  return { stdout: {}, stderr: {}, on: vi.fn(), kill: vi.fn(), pid: 98765 }
 }
 
 // Flush the microtask queue so async poll callbacks complete
@@ -113,6 +118,26 @@ describe('worker-dispatch', () => {
     expect(JSON.parse(env['OURO_TASK']!)).toMatchObject(task)
   })
 
+  it('skips dequeue when at max worker capacity', async () => {
+    const savedMax = process.env['OURO_MAX_WORKERS']
+    process.env['OURO_MAX_WORKERS'] = '0'
+    void startWorkerDispatch()
+    await flush()
+    expect(mockDequeue).not.toHaveBeenCalled()
+    if (savedMax === undefined) delete process.env['OURO_MAX_WORKERS']
+    else process.env['OURO_MAX_WORKERS'] = savedMax
+  })
+
+  it('logs poll errors without crashing', async () => {
+    mockDequeue.mockRejectedValueOnce(new Error('db connection lost'))
+    void startWorkerDispatch()
+    await flush()
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:worker-dispatch',
+      expect.stringContaining('poll error'),
+    )
+  })
+
   it('uses OURO_REPO_ROOT to locate the worker binary when set', async () => {
     const savedRoot = process.env['OURO_REPO_ROOT']
     process.env['OURO_REPO_ROOT'] = '/my/repo'
@@ -127,5 +152,155 @@ describe('worker-dispatch', () => {
     expect(workerPath).toContain('worker')
     if (savedRoot === undefined) delete process.env['OURO_REPO_ROOT']
     else process.env['OURO_REPO_ROOT'] = savedRoot
+  })
+
+  it('acks the message when worker process exits with code 0', async () => {
+    process.env['OURO_MAX_WORKERS'] = '10'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 49n,
+      message: { id: 'job-clean-exit', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    expect(closeCbCall).toBeDefined()
+    const closeCb = closeCbCall![1] as (code: number) => void
+    closeCb(0)
+    await flush(20)
+
+    expect(mockAck).toHaveBeenCalledWith('ouro_tasks', 49n)
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
+  it('inserts output lines through readline on-line handler', async () => {
+    process.env['OURO_MAX_WORKERS'] = '10'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 48n,
+      message: { id: 'job-readline', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+
+    // createInterface mock returns the same { on: vi.fn() } object for each call;
+    // the first 'line' callback registered is the stdout handler
+    const rlMock = mockCreateInterface.mock.results[0]?.value as { on: ReturnType<typeof vi.fn> }
+    expect(rlMock).toBeDefined()
+    const lineCbCall = rlMock.on.mock.calls.find(([e]: [string]) => e === 'line')
+    expect(lineCbCall).toBeDefined()
+    const lineCb = lineCbCall![1] as (line: string) => void
+
+    mockDb.mockClear()
+    lineCb('hello from worker')
+    await flush(10)
+
+    // insertOutputLine calls db as a tagged template — verify it was invoked
+    expect(mockDb).toHaveBeenCalled()
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
+  it('nacks and logs when worker process exits with non-zero code', async () => {
+    process.env['OURO_MAX_WORKERS'] = '10'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 50n,
+      message: { id: 'job-close-fail', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+
+    const closeCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'close')
+    expect(closeCbCall).toBeDefined()
+    const closeCb = closeCbCall![1] as (code: number) => void
+    closeCb(1)
+    await flush(20)
+
+    expect(mockNack).toHaveBeenCalledWith('ouro_tasks', 50n)
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:worker-dispatch',
+      expect.stringContaining('job-close-fail failed'),
+    )
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
+  it('nacks and logs when worker process emits an error event', async () => {
+    process.env['OURO_MAX_WORKERS'] = '10'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 51n,
+      message: { id: 'job-spawn-err', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+
+    const errCbCall = fakeProc.on.mock.calls.find(([e]: [string]) => e === 'error')
+    expect(errCbCall).toBeDefined()
+    const errCb = errCbCall![1] as (err: Error) => void
+    errCb(new Error('spawn ENOENT'))
+    await flush(20)
+
+    expect(mockNack).toHaveBeenCalledWith('ouro_tasks', 51n)
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:worker-dispatch',
+      expect.stringContaining('failed to spawn worker for job job-spawn-err'),
+    )
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
+  it('kills active worker and marks cancelled when cancellation is requested', async () => {
+    process.env['OURO_MAX_WORKERS'] = '10'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 52n,
+      message: { id: 'job-to-cancel', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+    // Worker is now in activeWorkers — advance to next cancel check cycle
+    mockDb
+      .mockResolvedValueOnce([{ id: 'job-to-cancel' }])  // SELECT cancellation_requested
+      .mockResolvedValueOnce([])                          // UPDATE to cancelled
+    await vi.advanceTimersByTimeAsync(3001)
+    await flush(20)
+
+    expect(fakeProc.kill).toHaveBeenCalledWith('SIGTERM')
+    expect(mockPublish).toHaveBeenCalledWith(
+      'ouro_notify',
+      expect.objectContaining({ type: 'job_complete', jobId: 'job-to-cancel', status: 'cancelled' }),
+    )
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:worker-dispatch',
+      expect.stringContaining('cancelled job job-to-cancel'),
+    )
+    delete process.env['OURO_MAX_WORKERS']
+  })
+
+  it('logs error when cancellation DB query throws', async () => {
+    process.env['OURO_MAX_WORKERS'] = '10'
+    const fakeProc = makeFakeProc()
+    mockSpawn.mockReturnValue(fakeProc as unknown as ReturnType<typeof spawn>)
+    mockDequeue.mockResolvedValueOnce({
+      msgId: 53n,
+      message: { id: 'job-cancel-dberr', backend: 'local', target: '/tmp', instructions: 'run' },
+    })
+    void startWorkerDispatch()
+    await flush(20)
+    // Make the DB throw on the next cancel check
+    mockDb.mockRejectedValueOnce(new Error('db timeout'))
+    await vi.advanceTimersByTimeAsync(3001)
+    await flush(20)
+
+    expect(mockLog).toHaveBeenCalledWith(
+      'meta-agent:worker-dispatch',
+      expect.stringContaining('cancellation check error'),
+    )
+    delete process.env['OURO_MAX_WORKERS']
   })
 })

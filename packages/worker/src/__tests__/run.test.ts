@@ -258,6 +258,70 @@ describe('worker run — completion status publishing', () => {
   })
 })
 
+describe('worker run — edge cases', () => {
+  const publishCalls: Array<[string, unknown]> = []
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockStdoutRl.removeAllListeners()
+    mockStderrRl.removeAllListeners()
+    mockProc.removeAllListeners()
+    resetRlCallCount()
+    publishCalls.length = 0
+    mockDb.fn = () => Promise.resolve([])
+    mockPublish.fn = (ch: string, p: unknown) => {
+      publishCalls.push([ch, p])
+      return Promise.resolve()
+    }
+  })
+
+  it('fails with "no output from claude" when process exits cleanly without any output', async () => {
+    process.env['OURO_TASK'] = JSON.stringify({
+      id: 'silent-job',
+      backend: 'local',
+      target: '/tmp/test',
+      instructions: 'do the thing',
+    })
+
+    const runPromise = run()
+    await tick(6)
+    // No stdout lines emitted — process exits with code 0
+    mockProc.emit('close', 0)
+    await runPromise
+
+    const completeCall = publishCalls.find(
+      ([ch, p]) => ch === 'ouro_notify' && (p as Record<string, unknown>)['type'] === 'job_complete'
+    )
+    expect(completeCall).toBeDefined()
+    expect((completeCall![1] as Record<string, unknown>)['status']).toBe('failed')
+  })
+
+  it('logs cleanup failure when backend.cleanup throws', async () => {
+    const { localBackend } = await import('../backends/local.js')
+    vi.mocked(localBackend.cleanup).mockRejectedValueOnce(new Error('cleanup ENOENT'))
+
+    process.env['OURO_TASK'] = JSON.stringify({
+      id: 'cleanup-fail-job',
+      backend: 'local',
+      target: '/tmp/test',
+      instructions: 'do the thing',
+    })
+
+    const runPromise = run()
+    await tick(6)
+    mockStdoutRl.emit('line', 'TASK_DONE')
+    await tick(6)
+    mockProc.emit('close', 0)
+    await runPromise
+
+    const { log: mockLogFn } = await import('@ouroboros/core')
+    expect(vi.mocked(mockLogFn)).toHaveBeenCalledWith(
+      'worker',
+      expect.stringContaining('cleanup failed'),
+    )
+  })
+})
+
 describe('worker run — input validation', () => {
   beforeEach(() => {
     vi.clearAllMocks()

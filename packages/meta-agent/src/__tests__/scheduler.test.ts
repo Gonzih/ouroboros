@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockDb = vi.fn()
 
@@ -15,11 +15,17 @@ vi.mock('croner', () => ({
   })),
 }))
 
-import { tickScheduler } from '../loops/scheduler.js'
+import { tickScheduler, startScheduler } from '../loops/scheduler.js'
 import { enqueue, publish } from '@ouroboros/core'
+import { Cron } from 'croner'
 
 const mockEnqueue = vi.mocked(enqueue)
 const mockPublish = vi.mocked(publish)
+const mockCron = vi.mocked(Cron)
+
+async function flush(n = 20): Promise<void> {
+  for (let i = 0; i < n; i++) await Promise.resolve()
+}
 
 describe('tickScheduler', () => {
   beforeEach(() => { vi.clearAllMocks() })
@@ -65,6 +71,29 @@ describe('tickScheduler', () => {
     expect(mockPublish).not.toHaveBeenCalled()
   })
 
+  it('uses null for next_run_at when Cron constructor throws', async () => {
+    mockCron.mockImplementationOnce(() => { throw new Error('invalid cron expression') })
+
+    const schedule = {
+      id: 'sched-bad',
+      name: 'bad-cron',
+      cron_expr: 'not-valid',
+      backend: 'local',
+      target: '/tmp',
+      instructions: 'run',
+    }
+    mockDb
+      .mockResolvedValueOnce([schedule])  // SELECT due
+      .mockResolvedValueOnce([])          // INSERT job
+      .mockResolvedValueOnce([])          // UPDATE schedule (next_run_at = null)
+
+    await tickScheduler()
+
+    // Job was still dispatched despite bad cron expression
+    expect(mockEnqueue).toHaveBeenCalledOnce()
+    expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({ scheduleId: 'sched-bad' }))
+  })
+
   it('dispatches one job per due schedule', async () => {
     const schedules = [
       { id: 's1', name: 'job-a', cron_expr: '0 9 * * *', backend: 'git', target: 'repo-a', instructions: 'Do A' },
@@ -84,5 +113,43 @@ describe('tickScheduler', () => {
     expect(mockPublish).toHaveBeenCalledTimes(2)
     expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({ scheduleId: 's1' }))
     expect(mockPublish).toHaveBeenCalledWith('ouro_notify', expect.objectContaining({ scheduleId: 's2' }))
+  })
+})
+
+describe('startScheduler / initNextRunAt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('initialises next_run_at for schedules that have none on startup', async () => {
+    mockDb
+      .mockResolvedValueOnce([{ id: 'sched-a', cron_expr: '0 9 * * *' }])  // initNextRunAt SELECT
+      .mockResolvedValueOnce([])                                              // initNextRunAt UPDATE
+      .mockResolvedValueOnce([])                                              // first tickScheduler SELECT (nothing due)
+
+    void startScheduler()
+    await flush()
+
+    // initNextRunAt fired: SELECT + UPDATE = 2 db calls; tickScheduler SELECT = 1 more
+    expect(mockDb).toHaveBeenCalledTimes(3)
+    // No jobs dispatched — nothing was due
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
+  it('skips UPDATE when there are no null-next_run_at schedules', async () => {
+    mockDb
+      .mockResolvedValueOnce([])  // initNextRunAt SELECT returns empty
+      .mockResolvedValueOnce([])  // tickScheduler SELECT (nothing due)
+
+    void startScheduler()
+    await flush()
+
+    expect(mockDb).toHaveBeenCalledTimes(2)
+    expect(mockEnqueue).not.toHaveBeenCalled()
   })
 })
