@@ -51,6 +51,8 @@ packages/
   ui/            — Vue 3 + TypeScript + Vite. Serves on port 7702.
   gateway/       — ChannelAdapter: Telegram, Slack, webhook. Notification dispatch.
   mcp-factory/   — dynamic MCP provisioning + validation. Serves on port 7703.
+  mcp-server/    — Control MCP (18 tools): jobs, mcp registry, feedback/evolution, logs, schedules.
+                   Mounted via claude-control.json so Claude can control the system directly.
 ```
 
 ---
