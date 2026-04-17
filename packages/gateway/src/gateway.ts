@@ -53,6 +53,12 @@ interface EvolutionMergeFailedEvent {
   error?: string
 }
 
+interface EvolutionTimeoutEvent {
+  type: 'evolution_timeout'
+  id: string
+  prUrl?: string
+}
+
 type OuroNotifyEvent =
   | McpRegisteredEvent
   | McpRemovedEvent
@@ -62,6 +68,7 @@ type OuroNotifyEvent =
   | EvolutionAppliedEvent
   | EvolutionRejectedEvent
   | EvolutionMergeFailedEvent
+  | EvolutionTimeoutEvent
 
 function isOuroNotifyEvent(payload: unknown): payload is OuroNotifyEvent {
   if (typeof payload !== 'object' || payload === null) return false
@@ -101,6 +108,10 @@ function formatEvent(event: OuroNotifyEvent): string | null {
     case 'evolution_merge_failed': {
       const errLine = event.error ? `: ${event.error}` : ''
       return `Evolution ${event.id} merge failed${errLine}. Approve again to retry.`
+    }
+    case 'evolution_timeout': {
+      const prLine = event.prUrl ? ` (${event.prUrl})` : ''
+      return `Evolution ${event.id} timed out after 7 days${prLine}. PR has been closed.`
     }
     default:
       return null

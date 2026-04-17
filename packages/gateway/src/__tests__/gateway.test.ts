@@ -236,6 +236,24 @@ describe('Gateway', () => {
       expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('conflict'))
     })
 
+    it('formats evolution_timeout event with prUrl and broadcasts it', async () => {
+      const adapter = makeMockAdapter('log')
+      const gateway = new Gateway([adapter])
+
+      let capturedCb: ((payload: unknown) => Promise<void>) | null = null
+      vi.mocked(subscribe).mockImplementationOnce(async (_ch, cb) => {
+        capturedCb = cb as (payload: unknown) => Promise<void>
+        return () => undefined
+      })
+
+      await gateway.start()
+      await capturedCb!({ type: 'evolution_timeout', id: 'ev-7', prUrl: 'https://github.com/acme/ouro/pull/99' })
+
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('ev-7'))
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('timed out'))
+      expect(adapter.send).toHaveBeenCalledWith(expect.stringContaining('https://github.com/acme/ouro/pull/99'))
+    })
+
     it('formats mcp_removed event and broadcasts it', async () => {
       const adapter = makeMockAdapter('log')
       const gateway = new Gateway([adapter])

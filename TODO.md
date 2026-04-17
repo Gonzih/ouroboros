@@ -266,6 +266,13 @@
 - [x] Tests: 1 new test (closes PR, sets timed_out, publishes event on deadline). meta-agent: 118 tests. Total: 517
 - [x] chore: bump all package versions to 2.3.6
 
+## v2.3.7 — gateway evolution_timeout notification ✅ complete
+
+- [x] gateway: `evolution_timeout` event handled in `formatEvent` — broadcasts timeout message with PR URL to all adapters (was silently dropped)
+- [x] ui: `evolution_timeout` added to `FEEDBACK_EVENT_TYPES` in `useWebSocket.ts` — feedback store refreshes on timeout event
+- [x] Tests: 1 new gateway test. gateway: 138 tests. Total: 518
+- [x] chore: bump all package versions to 2.3.7
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

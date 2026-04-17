@@ -1,3 +1,10 @@
+## v2.3.7 — gateway evolution_timeout notification
+
+- gateway: `evolution_timeout` event now handled in `formatEvent` — broadcasts "Evolution {id} timed out after 7 days. PR has been closed." to all adapters. Previously this event was silently dropped, so Telegram/Slack/Discord users received no notification when an evolution PR expired.
+- ui: `evolution_timeout` added to `FEEDBACK_EVENT_TYPES` in `useWebSocket.ts` — feedback store now refreshes on timeout, updating the row from `pr_open` to `timed_out` in real time.
+- Tests: 1 new gateway test (`evolution_timeout` with prUrl). gateway: 138 tests. Total: 518.
+- chore: bump all package versions to 2.3.7.
+
 ## v2.3.6 — evolution timeout: close PR + set timed_out status
 
 - meta-agent/evolution: `pollForApproval` now properly handles the 7-day deadline. Previously both "feedback row deleted" and "7-day deadline expired" fell through to the same code path that only logged and acked, leaving the GitHub PR open and the `ouro_feedback` row stuck at `pr_open` indefinitely. Now the two cases are distinguished: a deleted row acks the orphaned message silently; an actual deadline expiry closes the PR via `gh pr close`, updates status to `timed_out`, and publishes an `evolution_timeout` notify event so the gateway can inform the user.
