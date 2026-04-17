@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process'
+import { rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { StorageBackend } from './interface.js'
 
@@ -18,7 +20,7 @@ function run(cmd: string, args: string[], cwd?: string): void {
 }
 
 function taskDir(taskId: string): string {
-  return join('/tmp', `ouro-${taskId}`)
+  return join(tmpdir(), `ouro-${taskId}`)
 }
 
 export const gitBackend: StorageBackend = {
@@ -44,6 +46,6 @@ export const gitBackend: StorageBackend = {
   },
 
   async cleanup(dir: string): Promise<void> {
-    spawnSync('rm', ['-rf', dir], { timeout: 30_000 })
+    rmSync(dir, { recursive: true, force: true })
   },
 }

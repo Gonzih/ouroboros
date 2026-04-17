@@ -8,11 +8,12 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
   readFileSync: vi.fn(),
+  rmSync: vi.fn(),
   writeFileSync: vi.fn(),
 }))
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { gitBackend } from '../backends/git.js'
 import { localBackend } from '../backends/local.js'
 import { s3Backend } from '../backends/s3.js'
@@ -22,6 +23,7 @@ import { onedriveBackend } from '../backends/onedrive.js'
 const mockSpawnSync = vi.mocked(spawnSync)
 const mockExistsSync = vi.mocked(existsSync)
 const mockReadFileSync = vi.mocked(readFileSync)
+const mockRmSync = vi.mocked(rmSync)
 
 const ok = { status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null } as ReturnType<typeof spawnSync>
 
@@ -120,9 +122,8 @@ describe('StorageBackend implementations', () => {
     })
 
     it('removes workdir on cleanup', async () => {
-      mockSpawnSync.mockReturnValue(ok)
       await s3Backend.cleanup('/tmp/ouro-task2')
-      expect(mockSpawnSync).toHaveBeenCalledWith('rm', ['-rf', '/tmp/ouro-task2'], expect.any(Object))
+      expect(mockRmSync).toHaveBeenCalledWith('/tmp/ouro-task2', { recursive: true, force: true })
     })
   })
 
@@ -149,9 +150,8 @@ describe('StorageBackend implementations', () => {
     })
 
     it('removes workdir on cleanup', async () => {
-      mockSpawnSync.mockReturnValue(ok)
       await gdriveBackend.cleanup('/tmp/ouro-task3')
-      expect(mockSpawnSync).toHaveBeenCalledWith('rm', ['-rf', '/tmp/ouro-task3'], expect.any(Object))
+      expect(mockRmSync).toHaveBeenCalledWith('/tmp/ouro-task3', { recursive: true, force: true })
     })
   })
 
@@ -178,9 +178,8 @@ describe('StorageBackend implementations', () => {
     })
 
     it('removes workdir on cleanup', async () => {
-      mockSpawnSync.mockReturnValue(ok)
       await onedriveBackend.cleanup('/tmp/ouro-task4')
-      expect(mockSpawnSync).toHaveBeenCalledWith('rm', ['-rf', '/tmp/ouro-task4'], expect.any(Object))
+      expect(mockRmSync).toHaveBeenCalledWith('/tmp/ouro-task4', { recursive: true, force: true })
     })
   })
 })
