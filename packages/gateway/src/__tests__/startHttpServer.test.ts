@@ -68,6 +68,20 @@ describe('startHttpServer', () => {
     expect(mockCreateServer).toHaveBeenCalled()
   })
 
+  it('accepts a DiscordAdapter and mounts the interactions route', async () => {
+    mockListen.mockImplementation((_port: number, cb?: () => void) => { cb?.(); return mockServer })
+    const discordAdapter = {
+      name: 'discord',
+      handleInteraction: vi.fn().mockResolvedValue({ type: 1 }),
+      send: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+    }
+    // Should not throw — Discord interactions route is registered before express.json()
+    await expect(startHttpServer(undefined, discordAdapter as never)).resolves.toBeUndefined()
+    expect(mockCreateServer).toHaveBeenCalled()
+  })
+
   it('applies OIDC middleware and logs success when OURO_OIDC_ISSUER is set', async () => {
     process.env['OURO_OIDC_ISSUER'] = 'https://auth.example.com'
     const mockMiddleware = vi.fn()

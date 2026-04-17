@@ -119,6 +119,14 @@
 - [x] mcp-server/jobs: `retry_job` tool — clone failed/cancelled job as new pending entry, re-enqueue
 - [x] Tests: 4 new tests (success, instructions fallback, not-found, non-retryable). mcp-server: 54 tests
 
+## v1.7.0 — Discord gateway adapter ✅ complete
+
+- [x] gateway: `DiscordAdapter` — outbound via channels API; inbound slash commands via Interactions API with Ed25519 sig verification (no external deps)
+- [x] gateway/http: `POST /discord/interactions` route; raw body for Ed25519 verification
+- [x] gateway/index: wire up from `DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` / `DISCORD_PUBLIC_KEY`
+- [x] `.env.example`: Discord vars documented
+- [x] Tests: 14 new tests. gateway: 113 tests total
+
 ## Pending
 
 - [ ] Push main branch to origin — requires human action

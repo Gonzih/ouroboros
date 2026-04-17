@@ -2,6 +2,7 @@ import { migrate, closeDb, log, registerProcess, unregisterProcess, heartbeat } 
 import { LogAdapter } from './adapters/log.js'
 import { TelegramAdapter } from './adapters/telegram.js'
 import { SlackAdapter } from './adapters/slack.js'
+import { DiscordAdapter } from './adapters/discord.js'
 import { WebhookAdapter } from './adapters/webhook.js'
 import { Gateway } from './gateway.js'
 import { startHttpServer } from './http.js'
@@ -32,14 +33,24 @@ export async function start(): Promise<void> {
     adapters.push(slackAdapter)
   }
 
+  // Discord: requires DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID.
+  // DISCORD_PUBLIC_KEY enables inbound Interactions API support (/approve, /reject, /status, /jobs).
+  const discordToken = process.env['DISCORD_BOT_TOKEN']
+  const discordChannelId = process.env['DISCORD_CHANNEL_ID']
+  let discordAdapter: DiscordAdapter | undefined
+  if (discordToken && discordChannelId) {
+    discordAdapter = new DiscordAdapter(discordToken, discordChannelId, process.env['DISCORD_PUBLIC_KEY'])
+    adapters.push(discordAdapter)
+  }
+
   // Webhook: requires OURO_WEBHOOK_URL
   const webhookUrl = process.env['OURO_WEBHOOK_URL']
   if (webhookUrl) {
     adapters.push(new WebhookAdapter(webhookUrl))
   }
 
-  // startHttpServer handles OIDC middleware and optional Slack events route
-  await startHttpServer(slackAdapter)
+  // startHttpServer handles OIDC middleware, optional Slack events route, and Discord interactions route
+  await startHttpServer(slackAdapter, discordAdapter)
 
   const gateway = new Gateway(adapters)
 

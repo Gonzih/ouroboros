@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import http from 'node:http'
+import crypto from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 
 vi.mock('@ouroboros/core', () => ({
@@ -19,10 +20,10 @@ vi.mock('node-telegram-bot-api', () => ({
 import { log, getDb } from '@ouroboros/core'
 import { LogAdapter } from '../adapters/log.js'
 import { SlackAdapter } from '../adapters/slack.js'
+import { DiscordAdapter } from '../adapters/discord.js'
 import { WebhookAdapter } from '../adapters/webhook.js'
 import { TelegramAdapter } from '../adapters/telegram.js'
 import TelegramBot from 'node-telegram-bot-api'
-import crypto from 'node:crypto'
 
 const mockLog = vi.mocked(log)
 const mockGetDb = vi.mocked(getDb)
@@ -564,6 +565,140 @@ describe('ChannelAdapter implementations', () => {
       cbs['message']({ text: '/mcp' })
       await flush()
       expect(sendMessage).toHaveBeenCalledWith('-100', expect.stringContaining('Error fetching MCPs'))
+    })
+  })
+
+  describe('DiscordAdapter', () => {
+    // Generate a real Ed25519 key pair for signature tests — no mocking needed
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519')
+    const rawPubKeyHex = publicKey.export({ format: 'der', type: 'spki' }).subarray(12).toString('hex')
+
+    function discordSign(timestamp: string, body: string): string {
+      return crypto.sign(null, Buffer.from(timestamp + body), privateKey).toString('hex')
+    }
+
+    it('has correct name', () => {
+      const adapter = new DiscordAdapter('token', '123456789')
+      expect(adapter.name).toBe('discord')
+    })
+
+    it('start() logs outbound-only when no public key', async () => {
+      const adapter = new DiscordAdapter('token', '123456789')
+      await adapter.start()
+      expect(mockLog).toHaveBeenCalledWith('gateway:discord', 'discord adapter started (outbound only)')
+    })
+
+    it('start() logs inbound+outbound when public key provided', async () => {
+      const adapter = new DiscordAdapter('token', '123456789', rawPubKeyHex)
+      await adapter.start()
+      expect(mockLog).toHaveBeenCalledWith('gateway:discord', 'discord adapter started (inbound + outbound)')
+    })
+
+    it('stop() resolves without error', async () => {
+      const adapter = new DiscordAdapter('token', 'chan')
+      await expect(adapter.stop()).resolves.toBeUndefined()
+    })
+
+    describe('handleInteraction()', () => {
+      it('returns null when no public key configured', async () => {
+        const adapter = new DiscordAdapter('token', 'chan')
+        const result = await adapter.handleInteraction('{}', 'sig', 'ts')
+        expect(result).toBeNull()
+      })
+
+      it('returns null on invalid signature', async () => {
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const result = await adapter.handleInteraction('{}', 'badsig00'.repeat(16), 'ts')
+        expect(result).toBeNull()
+      })
+
+      it('responds to PING with type 1', async () => {
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({ type: 1 })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect(result).toEqual({ type: 1 })
+      })
+
+      it('handles /approve command and returns interaction response', async () => {
+        const mockDb = vi.fn().mockResolvedValue([{ id: 'fb-1' }])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({
+          type: 2,
+          data: { name: 'approve', options: [{ name: 'id', value: 'fb-1' }] },
+        })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect(result).toMatchObject({ type: 4, data: { content: 'Evolution fb-1 approved.' } })
+        expect(mockDb).toHaveBeenCalled()
+      })
+
+      it('handles /reject command and returns interaction response', async () => {
+        const mockDb = vi.fn().mockResolvedValue([{ id: 'fb-2' }])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({
+          type: 2,
+          data: { name: 'reject', options: [{ name: 'id', value: 'fb-2' }] },
+        })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect(result).toMatchObject({ type: 4, data: { content: 'Evolution fb-2 rejected.' } })
+      })
+
+      it('handles /approve not found', async () => {
+        const mockDb = vi.fn().mockResolvedValue([])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({
+          type: 2,
+          data: { name: 'approve', options: [{ name: 'id', value: 'fb-missing' }] },
+        })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect(result).toMatchObject({ type: 4, data: { content: 'No feedback found with id fb-missing' } })
+      })
+
+      it('handles /status command', async () => {
+        const mockDb = vi.fn()
+          .mockResolvedValueOnce([{ running: '1', pending: '0', completed: '3', failed: '0' }])
+          .mockResolvedValueOnce([{ count: '2' }])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({ type: 2, data: { name: 'status', options: [] } })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('running: 1')
+      })
+
+      it('handles /jobs command', async () => {
+        const mockDb = vi.fn().mockResolvedValue([
+          { id: 'j1', description: 'test task', status: 'completed', created_at: new Date() },
+        ])
+        mockGetDb.mockReturnValue(mockDb as unknown as ReturnType<typeof getDb>)
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({ type: 2, data: { name: 'jobs', options: [] } })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect((result?.['data'] as Record<string, unknown>)?.['content']).toContain('j1')
+      })
+
+      it('returns PONG for unknown interaction type', async () => {
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = JSON.stringify({ type: 99 })
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect(result).toEqual({ type: 1 })
+      })
+
+      it('returns null for invalid JSON body', async () => {
+        const adapter = new DiscordAdapter('token', 'chan', rawPubKeyHex)
+        const body = 'not-json'
+        const ts = String(Date.now())
+        const result = await adapter.handleInteraction(body, discordSign(ts, body), ts)
+        expect(result).toBeNull()
+      })
     })
   })
 })

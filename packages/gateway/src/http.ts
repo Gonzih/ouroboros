@@ -4,6 +4,7 @@ import type { Router } from 'express'
 import { getDb, publish, log } from '@ouroboros/core'
 import { createOidcMiddleware } from './oidc.js'
 import type { SlackAdapter } from './adapters/slack.js'
+import type { DiscordAdapter } from './adapters/discord.js'
 
 export const PORT_GATEWAY = parseInt(process.env['PORT_GATEWAY'] ?? '7701', 10)
 
@@ -96,7 +97,7 @@ export function createRouter(): Router {
   return router
 }
 
-export async function startHttpServer(slackAdapter?: SlackAdapter): Promise<void> {
+export async function startHttpServer(slackAdapter?: SlackAdapter, discordAdapter?: DiscordAdapter): Promise<void> {
   const app = express()
 
   // Slack Events API: must be registered BEFORE express.json() so the raw body
@@ -118,6 +119,26 @@ export async function startHttpServer(slackAdapter?: SlackAdapter): Promise<void
         res.json({ ok: true })
       }).catch((err: unknown) => {
         void log('gateway:http', `slack events error: ${String(err)}`)
+        res.status(500).json({ error: String(err) })
+      })
+    })
+  }
+
+  // Discord Interactions API: must be registered BEFORE express.json() so the raw body
+  // is available for Ed25519 signature verification.
+  if (discordAdapter) {
+    app.post('/discord/interactions', express.raw({ type: '*/*' }), (req, res) => {
+      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString() : ''
+      const signature = String(req.headers['x-signature-ed25519'] ?? '')
+      const timestamp = String(req.headers['x-signature-timestamp'] ?? '')
+      void discordAdapter.handleInteraction(rawBody, signature, timestamp).then((result) => {
+        if (result === null) {
+          res.status(401).json({ error: 'invalid request signature' })
+          return
+        }
+        res.json(result)
+      }).catch((err: unknown) => {
+        void log('gateway:http', `discord interactions error: ${String(err)}`)
         res.status(500).json({ error: String(err) })
       })
     })

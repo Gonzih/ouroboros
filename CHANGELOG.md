@@ -1,3 +1,10 @@
+## v1.7.0 — Discord gateway adapter
+
+- gateway/discord: `DiscordAdapter` added — outbound notifications via Discord channels API (`Bot` token auth); inbound `/approve`, `/reject`, `/status`, `/jobs` slash commands via Discord Interactions API (Ed25519 signature verification using Node.js built-in `crypto`, no external dependencies).
+- gateway/http: `POST /discord/interactions` route mounted before `express.json()` so raw body is available for Ed25519 verification. Enabled by setting `DISCORD_PUBLIC_KEY` alongside `DISCORD_BOT_TOKEN` and `DISCORD_CHANNEL_ID`.
+- `.env.example`: Discord env vars documented (`DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID`, `DISCORD_PUBLIC_KEY`).
+- Tests: 14 new gateway tests (DiscordAdapter name/start/stop, PING response, approve/reject/status/jobs commands, not-found path, unknown interaction type, invalid JSON, invalid signature; startHttpServer Discord route mounting). gateway: 113 tests.
+
 ## v1.6.0 — retry_job in Control MCP
 
 - mcp-server/jobs: `retry_job` tool added — creates a new pending job from a failed or cancelled one, preserving backend/target/instructions. Returns `{ job_id }` for the new job, or `{ error }` for not-found/non-retryable states. Closes the gap between UI retry and MCP control plane.
