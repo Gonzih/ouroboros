@@ -113,6 +113,9 @@ describe('coordinator', () => {
       const prompt = buildCoordinatorPrompt()
       expect(prompt).toContain('list_jobs')
       expect(prompt).toContain('spawn_worker')
+      expect(prompt).toContain('get_job_status')
+      expect(prompt).toContain('get_job_output')
+      expect(prompt).toContain('cancel_job')
     })
 
     it('references diagnostic tools', () => {
@@ -129,11 +132,14 @@ describe('coordinator', () => {
     it('references MCP awareness tools', () => {
       const prompt = buildCoordinatorPrompt()
       expect(prompt).toContain('list_mcps')
+      expect(prompt).toContain('register_mcp')
+      expect(prompt).toContain('test_mcp')
+      expect(prompt).toContain('delete_mcp')
     })
 
     it('mentions current version and --continue persistence', () => {
       const prompt = buildCoordinatorPrompt()
-      expect(prompt).toContain('v1.2.0')
+      expect(prompt).toContain('v1.2.1')
       expect(prompt).toContain('--continue')
     })
 
