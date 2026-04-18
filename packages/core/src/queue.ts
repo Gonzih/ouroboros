@@ -2,7 +2,10 @@ import { getDb } from './db.js'
 
 export async function enqueue(queue: string, message: unknown): Promise<bigint> {
   const db = getDb()
-  const rows = await db<{ msg_id: string }[]>`SELECT pgmq.send(${queue}, ${JSON.stringify(message)}::jsonb) AS msg_id`
+  // Use db.json() so postgres.js serialises the value with the jsonb OID directly
+  // rather than sending a plain-text string and relying on a ::jsonb cast, which
+  // can cause double-encoding when the connection pool's type registry is warm.
+  const rows = await db<{ msg_id: string }[]>`SELECT pgmq.send(${queue}, ${db.json(message as Parameters<typeof db.json>[0])}) AS msg_id`
   const row = rows[0]
   if (!row) throw new Error(`pgmq.send returned no rows for queue ${queue}`)
   return BigInt(row.msg_id)
@@ -19,10 +22,12 @@ export async function dequeue<T>(
   const row = rows[0]
   if (!row) return null
   // postgres.js may return JSONB from set-returning functions as a raw string rather than
-  // a parsed object — parse it defensively so consumers always receive a JS object.
-  const raw = row.message
-  const message: T = (typeof raw === 'string' ? JSON.parse(raw) : raw) as T
-  return { msgId: BigInt(row.msg_id), message, readCt: row.read_ct }
+  // a parsed object. Unwrap up to two levels so consumers always receive a JS object,
+  // regardless of whether the value was single- or double-encoded during storage.
+  let parsed: unknown = row.message
+  if (typeof parsed === 'string') parsed = JSON.parse(parsed)
+  if (typeof parsed === 'string') parsed = JSON.parse(parsed)
+  return { msgId: BigInt(row.msg_id), message: parsed as T, readCt: row.read_ct }
 }
 
 export async function ack(queue: string, msgId: bigint): Promise<void> {
