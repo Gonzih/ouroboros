@@ -11,11 +11,21 @@ import { spawnCoordinator, clearSessionId, loadSessionId, isValidUUID } from './
 // the real signal — if the coordinator produced any output it did real work.
 const FAST_EXIT_THRESHOLD_MS = 8_000
 
+// Backoff bounds for idle coordinator restarts.
+// An "idle" exit is one where the coordinator finishes in under IDLE_EXIT_MS —
+// it swept, found nothing to do, and returned quickly. Back off exponentially up
+// to MAX_SLEEP_MS so we don't spin-spawn on a quiet system. Reset to MIN_SLEEP_MS
+// whenever the coordinator runs long (indicating real work was done).
+const MIN_SLEEP_MS = 5_000
+const MAX_SLEEP_MS = 5 * 60_000  // 5 minutes
+const IDLE_EXIT_MS = 30_000       // faster than this = idle sweep
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 async function runCoordinatorLoop(): Promise<void> {
+  let sleepMs = MIN_SLEEP_MS
   while (true) {
     const spawnedAt = Date.now()
     let hadOutput = false
@@ -39,8 +49,14 @@ async function runCoordinatorLoop(): Promise<void> {
         clearSessionId()
       }
     }
-    await log('meta-agent', 'Coordinator exited — restarting in 5s')
-    await sleep(5000)
+    // Backoff: idle sweep → increase delay; real work → reset to minimum.
+    if (elapsed >= IDLE_EXIT_MS) {
+      sleepMs = MIN_SLEEP_MS
+    } else {
+      sleepMs = Math.min(sleepMs * 2, MAX_SLEEP_MS)
+    }
+    await log('meta-agent', `Coordinator exited — restarting in ${Math.round(sleepMs / 1000)}s`)
+    await sleep(sleepMs)
   }
 }
 
