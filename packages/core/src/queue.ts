@@ -18,7 +18,11 @@ export async function dequeue<T>(
   `
   const row = rows[0]
   if (!row) return null
-  return { msgId: BigInt(row.msg_id), message: row.message as T, readCt: row.read_ct }
+  // postgres.js may return JSONB from set-returning functions as a raw string rather than
+  // a parsed object — parse it defensively so consumers always receive a JS object.
+  const raw = row.message
+  const message: T = (typeof raw === 'string' ? JSON.parse(raw) : raw) as T
+  return { msgId: BigInt(row.msg_id), message, readCt: row.read_ct }
 }
 
 export async function ack(queue: string, msgId: bigint): Promise<void> {
