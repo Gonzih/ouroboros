@@ -1,10 +1,23 @@
 import { getDb, enqueue, log } from '@ouroboros/core'
 import { randomUUID } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 
 export type ToolResult = { content: Array<{ type: 'text'; text: string }> }
 
 export function textResult(text: string): ToolResult {
   return { content: [{ type: 'text', text }] }
+}
+
+// Returns a warning string if the task looks compound, undefined otherwise.
+export function checkAtomicity(task: string): string | undefined {
+  const sentences = task.split(/\.\s+/).filter(s => s.trim().length > 0)
+  const compoundMatches = (task.match(/\band also\b|\badditionally\b|\bfurthermore\b|\bplus\b/gi) ?? []).length
+  const numberedItems = (task.match(/^\s*\d+[.)]/gm) ?? []).length
+
+  if (sentences.length > 5 || compoundMatches > 2 || numberedItems > 3) {
+    return 'Task may be compound — consider splitting with split_task'
+  }
+  return undefined
 }
 
 export const jobTools = [
@@ -38,7 +51,7 @@ export const jobTools = [
   },
   {
     name: 'get_job_status',
-    description: 'Get the current status, timing, and error for a specific job',
+    description: 'Get the current status, timing, error, and atomicity warning for a specific job',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -90,6 +103,18 @@ export const jobTools = [
       required: ['job_id'],
     },
   },
+  {
+    name: 'split_task',
+    description: 'Break a large or compound task into atomic, independently-executable subtasks',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        task: { type: 'string', description: 'The task description to split' },
+        repo_url: { type: 'string', description: 'Repository URL for context' },
+      },
+      required: ['task', 'repo_url'],
+    },
+  },
 ]
 
 export async function handleJobTool(
@@ -131,8 +156,9 @@ export async function handleJobTool(
       completed_at: Date | null
       error: string | null
       instructions: string | null
+      atomicity_warning: string | null
     }[]>`
-      SELECT status, started_at, completed_at, error, instructions FROM ouro_jobs WHERE id = ${jobId}
+      SELECT status, started_at, completed_at, error, instructions, atomicity_warning FROM ouro_jobs WHERE id = ${jobId}
     `
     const row = rows[0]
     if (!row) return textResult(JSON.stringify({ error: 'job not found' }))
@@ -145,14 +171,15 @@ export async function handleJobTool(
     const target = typeof a['target'] === 'string' ? a['target'] : ''
     const instructions = typeof a['instructions'] === 'string' ? a['instructions'] : description
     const id = randomUUID()
+    const atomicityWarning = checkAtomicity(instructions) ?? null
 
     await db`
-      INSERT INTO ouro_jobs (id, description, backend, target, status, instructions)
-      VALUES (${id}, ${description}, ${backend}, ${target}, 'pending', ${instructions})
+      INSERT INTO ouro_jobs (id, description, backend, target, status, instructions, atomicity_warning)
+      VALUES (${id}, ${description}, ${backend}, ${target}, 'pending', ${instructions}, ${atomicityWarning})
     `
     await enqueue('ouro_tasks', { id, backend, target, instructions })
     await log('mcp-server', `spawned worker job ${id}: ${description}`)
-    return textResult(JSON.stringify({ job_id: id }))
+    return textResult(JSON.stringify({ job_id: id, atomicityWarning }))
   }
 
   if (name === 'cancel_job') {
@@ -193,6 +220,54 @@ export async function handleJobTool(
     await enqueue('ouro_tasks', { id: newId, backend: job.backend, target: job.target, instructions })
     await log('mcp-server', `retrying job ${jobId} as new job ${newId}`)
     return textResult(JSON.stringify({ job_id: newId }))
+  }
+
+  if (name === 'split_task') {
+    const task = typeof a['task'] === 'string' ? a['task'] : ''
+    const repoUrl = typeof a['repo_url'] === 'string' ? a['repo_url'] : ''
+    const claudeBin = process.env['CLAUDE_BIN'] ?? 'claude'
+
+    const prompt = [
+      'Break this task into atomic, independently-executable subtasks. Each subtask should:',
+      '- Do exactly one thing',
+      '- Be completable in a single agent session',
+      '- Have a clear success criterion',
+      '- Not depend on implementation details of other subtasks',
+      '',
+      `Task: ${task}`,
+      `Repo: ${repoUrl}`,
+      '',
+      'Return ONLY valid JSON in this exact shape (no markdown, no explanation):',
+      '{"subtasks": [{"title": "...", "description": "...", "estimated_complexity": "small"}]}',
+      'estimated_complexity must be one of: trivial, small, medium',
+    ].join('\n')
+
+    const result = spawnSync(claudeBin, ['--print', '-p', prompt], {
+      timeout: 30_000,
+      encoding: 'utf-8',
+      env: { ...process.env },
+    })
+
+    if (result.error !== undefined) {
+      return textResult(JSON.stringify({ error: `split_task failed: ${result.error.message}` }))
+    }
+    if (result.status !== 0) {
+      return textResult(JSON.stringify({ error: `split_task exited with code ${result.status ?? 'unknown'}` }))
+    }
+
+    const stdout = (result.stdout ?? '').trim()
+    // Try direct JSON parse first, then extract from surrounding text
+    const attempts = [stdout, (stdout.match(/\{[\s\S]*\}/) ?? [])[0] ?? '']
+    for (const attempt of attempts) {
+      if (!attempt) continue
+      try {
+        const parsed = JSON.parse(attempt) as { subtasks: unknown[] }
+        return textResult(JSON.stringify(parsed))
+      } catch {
+        // try next
+      }
+    }
+    return textResult(JSON.stringify({ error: 'failed to parse split_task output', raw: stdout.slice(0, 300) }))
   }
 
   throw new Error(`Unknown job tool: ${name}`)

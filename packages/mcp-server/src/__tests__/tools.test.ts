@@ -14,8 +14,13 @@ vi.mock('croner', () => ({
   }),
 }))
 
+vi.mock('node:child_process', () => ({
+  spawnSync: vi.fn(),
+}))
+
 import { getDb, log, publish, enqueue } from '@ouroboros/core'
-import { handleJobTool } from '../tools/jobs.js'
+import { spawnSync } from 'node:child_process'
+import { handleJobTool, checkAtomicity } from '../tools/jobs.js'
 import { handleMcpTool } from '../tools/mcp.js'
 import { handleFeedbackTool } from '../tools/feedback.js'
 import { handleLogTool } from '../tools/logs.js'
@@ -25,6 +30,7 @@ const mockGetDb = vi.mocked(getDb)
 const mockLog = vi.mocked(log)
 const mockPublish = vi.mocked(publish)
 const mockEnqueue = vi.mocked(enqueue)
+const mockSpawnSync = vi.mocked(spawnSync)
 
 function makeDbMock(rows: unknown[] = []) {
   const fn = vi.fn().mockResolvedValue(rows)
@@ -81,11 +87,25 @@ describe('handleJobTool', () => {
   })
 
   it('get_job_status returns job fields', async () => {
-    const row = { status: 'completed', started_at: null, completed_at: null, error: null }
+    const row = { status: 'completed', started_at: null, completed_at: null, error: null, atomicity_warning: null }
     mockGetDb.mockReturnValue(makeDbMock([row]))
     const result = await handleJobTool('get_job_status', { job_id: 'j1' })
     const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
     expect((parsed as Record<string, unknown>)['status']).toBe('completed')
+  })
+
+  it('get_job_status includes atomicity_warning in response', async () => {
+    const row = {
+      status: 'pending',
+      started_at: null,
+      completed_at: null,
+      error: null,
+      atomicity_warning: 'Task may be compound — consider splitting with split_task',
+    }
+    mockGetDb.mockReturnValue(makeDbMock([row]))
+    const result = await handleJobTool('get_job_status', { job_id: 'j1' })
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown>
+    expect(parsed['atomicity_warning']).toBeTruthy()
   })
 
   it('get_job_status returns error when job not found', async () => {
@@ -204,6 +224,103 @@ describe('handleJobTool', () => {
   it('throws on unknown tool name', async () => {
     mockGetDb.mockReturnValue(makeDbMock([]))
     await expect(handleJobTool('nonexistent', {})).rejects.toThrow('Unknown job tool')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// checkAtomicity
+// ---------------------------------------------------------------------------
+describe('checkAtomicity', () => {
+  it('returns undefined for a short single-concern task', () => {
+    expect(checkAtomicity('Add a dark mode toggle to the settings page.')).toBeUndefined()
+  })
+
+  it('triggers warning when task has more than 5 sentences', () => {
+    const task = 'Do step one. Do step two. Do step three. Do step four. Do step five. Do step six.'
+    expect(checkAtomicity(task)).toMatch(/compound/)
+  })
+
+  it('triggers warning when task has more than 2 compound indicators', () => {
+    const task = 'Add a feature, additionally update the docs, furthermore write tests, and also fix the lint.'
+    expect(checkAtomicity(task)).toMatch(/compound/)
+  })
+
+  it('triggers warning when task has more than 3 numbered list items', () => {
+    const task = 'Do:\n1. thing one\n2. thing two\n3. thing three\n4. thing four'
+    expect(checkAtomicity(task)).toMatch(/compound/)
+  })
+
+  it('does not trigger on exactly 3 numbered items', () => {
+    const task = 'Do:\n1. thing one\n2. thing two\n3. thing three'
+    expect(checkAtomicity(task)).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// split_task
+// ---------------------------------------------------------------------------
+describe('split_task via handleJobTool', () => {
+  it('returns subtasks from a compound task', async () => {
+    const subtasks = [
+      { title: 'Add API endpoint', description: 'Create GET /users', estimated_complexity: 'small' },
+      { title: 'Add tests', description: 'Write unit tests for GET /users', estimated_complexity: 'small' },
+    ]
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({ subtasks }),
+      stderr: '',
+      error: undefined,
+      pid: 1234,
+      output: [],
+      signal: null,
+    })
+
+    const result = await handleJobTool('split_task', {
+      task: 'Add a user API endpoint and write tests for it and add docs',
+      repo_url: 'https://github.com/org/repo',
+    })
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as { subtasks: unknown[] }
+    expect(Array.isArray(parsed.subtasks)).toBe(true)
+    expect(parsed.subtasks.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('returns error when claude fails', async () => {
+    mockSpawnSync.mockReturnValue({
+      status: 1,
+      stdout: '',
+      stderr: 'command not found',
+      error: undefined,
+      pid: 0,
+      output: [],
+      signal: null,
+    })
+
+    const result = await handleJobTool('split_task', {
+      task: 'do something',
+      repo_url: 'https://github.com/org/repo',
+    })
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown>
+    expect(parsed['error']).toBeTruthy()
+  })
+
+  it('extracts JSON when claude wraps output in prose', async () => {
+    const subtasks = [{ title: 'A', description: 'Do A', estimated_complexity: 'trivial' }]
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: `Here are the subtasks:\n\n${JSON.stringify({ subtasks })}\n\nLet me know if you need more.`,
+      stderr: '',
+      error: undefined,
+      pid: 1234,
+      output: [],
+      signal: null,
+    })
+
+    const result = await handleJobTool('split_task', {
+      task: 'do a thing',
+      repo_url: 'https://github.com/org/repo',
+    })
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as { subtasks: unknown[] }
+    expect(Array.isArray(parsed.subtasks)).toBe(true)
   })
 })
 
@@ -353,26 +470,64 @@ describe('handleFeedbackTool', () => {
 // log tool
 // ---------------------------------------------------------------------------
 describe('handleLogTool', () => {
-  it('get_logs returns formatted lines in chronological order', async () => {
-    const rows = [
+  function makeHealthAndLogsMock(
+    health: Record<string, unknown>,
+    logRows: unknown[],
+  ): ReturnType<typeof getDb> {
+    const fn = vi.fn()
+      .mockResolvedValueOnce([health])
+      .mockResolvedValueOnce(logRows)
+    return fn as unknown as ReturnType<typeof getDb>
+  }
+
+  it('get_logs returns health object with correct running job count', async () => {
+    const logRows = [
       { source: 'meta-agent', message: 'tick 3', ts: new Date('2024-01-01T00:00:03Z') },
       { source: 'worker', message: 'tick 2', ts: new Date('2024-01-01T00:00:02Z') },
       { source: 'meta-agent', message: 'tick 1', ts: new Date('2024-01-01T00:00:01Z') },
     ]
-    mockGetDb.mockReturnValue(makeDbMock(rows))
+    mockGetDb.mockReturnValue(
+      makeHealthAndLogsMock({ running: 2, stalled: 0, failed_1h: 1, pending: 3, avg_min: 5.5 }, logRows),
+    )
     const result = await handleLogTool('get_logs', { limit: 3 })
     const text = result.content[0]?.text ?? ''
+    const parsed = JSON.parse(text) as { health: Record<string, unknown>; logs: string[] }
+    expect(parsed.health.runningJobs).toBe(2)
+    expect(parsed.health.pendingJobs).toBe(3)
+    expect(parsed.health.failedLast1h).toBe(1)
+    expect(Array.isArray(parsed.logs)).toBe(true)
     // reversed to chronological: tick 1, tick 2, tick 3
-    expect(text).toContain('[meta-agent] tick 1')
-    expect(text).toContain('[worker] tick 2')
-    expect(text.indexOf('tick 1')).toBeLessThan(text.indexOf('tick 3'))
+    const logsText = parsed.logs.join('\n')
+    expect(logsText).toContain('[meta-agent] tick 1')
+    expect(logsText).toContain('[worker] tick 2')
+    expect(logsText.indexOf('tick 1')).toBeLessThan(logsText.indexOf('tick 3'))
   })
 
-  it('get_logs with no args uses defaults', async () => {
-    mockGetDb.mockReturnValue(makeDbMock([]))
+  it('get_logs with no args uses defaults and returns health', async () => {
+    mockGetDb.mockReturnValue(
+      makeHealthAndLogsMock({ running: 0, stalled: 0, failed_1h: 0, pending: 0, avg_min: null }, []),
+    )
     const result = await handleLogTool('get_logs', undefined)
     expect(result.content[0]?.type).toBe('text')
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown>
+    expect(parsed['health']).toBeDefined()
+    expect(parsed['logs']).toBeDefined()
     expect(mockGetDb).toHaveBeenCalledOnce()
+  })
+
+  it('topErrors contains error log lines', async () => {
+    const logRows = [
+      { source: 'worker', message: 'job failed: timeout', ts: new Date() },
+      { source: 'meta-agent', message: 'normal tick', ts: new Date() },
+      { source: 'worker', message: 'Error: connection refused', ts: new Date() },
+    ]
+    mockGetDb.mockReturnValue(
+      makeHealthAndLogsMock({ running: 0, stalled: 0, failed_1h: 2, pending: 0, avg_min: null }, logRows),
+    )
+    const result = await handleLogTool('get_logs', {})
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as { health: { topErrors: string[] } }
+    expect(parsed.health.topErrors.length).toBeGreaterThanOrEqual(1)
+    expect(parsed.health.topErrors.some((e: string) => /failed|Error/i.test(e))).toBe(true)
   })
 
   it('throws on unknown tool name', async () => {

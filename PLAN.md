@@ -1,3 +1,30 @@
+# PLAN — Pi philosophy: atomic tasks, health visibility, output hygiene
+
+## Task restatement
+Apply the "agents do ONE simple thing" philosophy to Ouroboros by adding:
+1. Atomicity scoring on task creation (warn on compound tasks)
+2. `split_task` tool so the coordinator can decompose large tasks
+3. Job health metrics in `get_logs` for instant system-wide visibility
+4. Worker output filtering to strip internal tool-call noise
+
+## Files touched
+- `packages/core/src/migrations/003_atomicity_warning.sql` (new)
+- `packages/mcp-server/src/tools/jobs.ts` (atomicity check + split_task)
+- `packages/mcp-server/src/tools/logs.ts` (health metrics)
+- `packages/mcp-server/src/__tests__/tools.test.ts` (update + new tests)
+- `packages/worker/src/filter.ts` (new — output filter function)
+- `packages/worker/src/run.ts` (use filter)
+- `packages/worker/src/__tests__/filter.test.ts` (new)
+
+## Risks / notes
+- `get_logs` output format changes from plain text to JSON — existing test updated
+- `spawn_worker` INSERT gains optional `atomicity_warning` column (nullable, safe)
+- `split_task` depends on `claude` binary being available at runtime (same as workers)
+- `noUncheckedIndexedAccess: true` — all `rows[0]` accesses need `?? fallback`
+
+---
+# Previous plan (v0.2 meta-agent) — kept for reference
+
 # Plan: meta-agent v2 — persistent Claude coordinator session
 
 ## Task Restatement
