@@ -121,19 +121,104 @@ apiRouter.get('/feedback', async (_req, res) => {
   }
 })
 
-apiRouter.get('/logs', async (_req, res) => {
+apiRouter.get('/logs', async (req, res) => {
   try {
     const db = getDb()
-    const rows = await db`
-      SELECT id, source, message, ts
-      FROM ouro_logs
-      ORDER BY ts DESC
-      LIMIT 200
-    `
-    res.json(rows)
+    const source = typeof req.query['source'] === 'string' ? req.query['source'] : null
+    const limitRaw = parseInt(String(req.query['limit'] ?? '200'), 10)
+    const limit = Math.min(isNaN(limitRaw) || limitRaw < 1 ? 200 : limitRaw, 1000)
+    const since = typeof req.query['since'] === 'string' ? req.query['since'] : null
+
+    let rows
+    if (source !== null && since !== null) {
+      rows = await db`
+        SELECT id, source, message, ts FROM ouro_logs
+        WHERE source = ${source} AND ts > ${since}::timestamptz
+        ORDER BY ts DESC LIMIT ${limit}
+      `
+    } else if (source !== null) {
+      rows = await db`
+        SELECT id, source, message, ts FROM ouro_logs
+        WHERE source = ${source}
+        ORDER BY ts DESC LIMIT ${limit}
+      `
+    } else if (since !== null) {
+      rows = await db`
+        SELECT id, source, message, ts FROM ouro_logs
+        WHERE ts > ${since}::timestamptz
+        ORDER BY ts DESC LIMIT ${limit}
+      `
+    } else {
+      rows = await db`
+        SELECT id, source, message, ts FROM ouro_logs
+        ORDER BY ts DESC LIMIT ${limit}
+      `
+    }
+
+    res.json({ logs: rows })
   } catch (err: unknown) {
     res.status(500).json({ error: String(err) })
   }
+})
+
+apiRouter.get('/logs/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  const db = getDb()
+  let lastId = 0
+  let closed = false
+
+  req.on('close', () => { closed = true })
+
+  void (async () => {
+    // Send initial batch: last 50 rows, reversed to oldest-first for display
+    try {
+      const rows = await db`
+        SELECT id, source, message, ts
+        FROM ouro_logs
+        ORDER BY id DESC
+        LIMIT 50
+      `
+      const initial = [...rows].reverse()
+      if (initial.length > 0) {
+        const last = initial[initial.length - 1] as { id: number } | undefined
+        lastId = last?.id ?? 0
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify(initial)}\n\n`)
+        }
+      }
+    } catch {
+      // continue even if initial fetch fails
+    }
+
+    // Recursive poll: new rows every 3s
+    const poll = async (): Promise<void> => {
+      if (closed || res.writableEnded) return
+      try {
+        const rows = await db`
+          SELECT id, source, message, ts
+          FROM ouro_logs
+          WHERE id > ${lastId}
+          ORDER BY id ASC
+        `
+        for (const row of rows) {
+          if (closed || res.writableEnded) return
+          lastId = (row as { id: number }).id
+          res.write(`data: ${JSON.stringify(row)}\n\n`)
+        }
+      } catch {
+        // ignore transient poll errors
+      }
+      if (!closed && !res.writableEnded) {
+        setTimeout(() => { void poll() }, 3000)
+      }
+    }
+
+    setTimeout(() => { void poll() }, 3000)
+  })()
 })
 
 apiRouter.post('/feedback', async (req, res) => {
