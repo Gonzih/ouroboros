@@ -12,6 +12,7 @@ import {
   heartbeat,
 } from '@ouroboros/core'
 import type { StorageBackend } from './backends/interface.js'
+import { shouldKeepLine } from './filter.js'
 import { gitBackend } from './backends/git.js'
 import { localBackend } from './backends/local.js'
 import { s3Backend } from './backends/s3.js'
@@ -122,6 +123,7 @@ export async function run(): Promise<void> {
     let taskFailed = false
     let taskFailedReason = ''
     let lastOutputAt = Date.now()
+    let lastKeptLine: string | null = null
 
     const idleTimer = setInterval(async () => {
       const idleSecs = Math.floor((Date.now() - lastOutputAt) / 1000)
@@ -145,15 +147,21 @@ export async function run(): Promise<void> {
       const rl = createInterface({ input: proc.stdout })
       rl.on('line', async (line) => {
         lastOutputAt = Date.now()
-        outputLines.push(line)
-        process.stdout.write(line + '\n')
-        await insertOutputLine(id, line)
+
+        // Detect completion markers before filtering so they are never missed.
         if (line.trim() === 'TASK_DONE') {
           taskDone = true
         } else if (line.trim().startsWith('TASK_FAILED:')) {
           taskFailed = true
           taskFailedReason = line.trim().slice('TASK_FAILED:'.length)
         }
+
+        if (!shouldKeepLine(line, lastKeptLine)) return
+        lastKeptLine = line
+
+        outputLines.push(line)
+        process.stdout.write(line + '\n')
+        await insertOutputLine(id, line)
       })
 
       const stderrLines: string[] = []
