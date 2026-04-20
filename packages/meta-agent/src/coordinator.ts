@@ -1,59 +1,37 @@
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { log } from '@ouroboros/core'
 import { findClaudeBin } from './claude.js'
 
-function getSessionFile(): string {
-  return join(process.env['OURO_REPO_ROOT'] ?? '.', '.ouro-session')
-}
-
-export function loadSessionId(): string | undefined {
-  if (existsSync(getSessionFile())) {
-    const content = readFileSync(getSessionFile(), 'utf8').trim()
-    return content || undefined
-  }
-  return undefined
-}
-
-export function saveSessionId(id: string): void {
-  writeFileSync(getSessionFile(), id)
-}
-
 export function buildCoordinatorPrompt(): string {
-  return `You are the Ouroboros coordinator. You have access to the ouroboros MCP server which gives you full control over the system.
+  return `You are the Ouroboros coordinator. Use the ouroboros MCP tools to manage the system.
 
-Your job:
-1. Monitor workers — list_jobs() to find pending/stuck. spawn_worker() for new tasks queued by users.
-2. Process feedback — list_feedback(status='pending') every few minutes. Reason about each item, act on it.
-3. Watch evolutions — list_feedback(status='pr_open') to find pending approvals. Review and approve_evolution() or reject_evolution().
-4. Self-diagnose — get_logs() to spot errors. Use tools to fix what's broken.
-5. MCP awareness — list_mcps() to know what data sources are connected.
+Each cycle:
+1. list_jobs() — spawn pending workers, cancel stuck ones, retry failed ones
+2. list_feedback(status='pending') — reason about each item, act on it
+3. list_feedback(status='pr_open') — review open evolution PRs. Approve or reject via approve_evolution()/reject_evolution(). Merging is a human action only — flag approved PRs by logging: [evolution:approved] <pr_url>
+4. get_logs() — spot errors, fix what's broken
+5. list_mcps(), list_schedules() — maintain registered sources and schedules
 
-Be autonomous. Act on what needs action. Check state periodically. When you finish a cycle, wait a moment then check again.
-The system is Ouroboros v0.2. Running with --continue so your context persists across restarts.`
+Be autonomous on jobs and feedback. Require human approval for merges.
+When tasks are large, use create_plan() to decompose into atomic scoped steps.
+Output [coordinator:did-work] on its own line whenever you take a meaningful action.`
 }
 
 export async function spawnCoordinator(): Promise<ChildProcess> {
   const repoRoot = process.env['OURO_REPO_ROOT'] ?? '.'
   const mcpConfig = join(repoRoot, 'claude-control.json')
-  const sessionId = loadSessionId()
   const claudeBin = findClaudeBin()
 
   const args: string[] = [
     '--dangerously-skip-permissions',
     '--mcp-config', mcpConfig,
     '--print',
+    '-p', buildCoordinatorPrompt(),
   ]
 
-  if (sessionId) {
-    args.push('--continue', '-p', 'Continue your coordination work. Check system state and act on what needs attention.')
-    await log('meta-agent', `Resuming coordinator session ${sessionId}`)
-  } else {
-    args.push('-p', buildCoordinatorPrompt())
-    await log('meta-agent', 'Starting new coordinator session')
-  }
+  await log('meta-agent', 'Starting coordinator cycle (stateless)')
 
   const claude = spawn(claudeBin, args, {
     cwd: repoRoot,
@@ -66,11 +44,6 @@ export async function spawnCoordinator(): Promise<ChildProcess> {
     for (const line of text.split('\n')) {
       const trimmed = line.trim()
       if (trimmed) void log('coordinator', trimmed)
-
-      // Parse session ID from Claude output metadata if present
-      const match = /session[_-]?id[:\s]+([a-f0-9-]{36})/i.exec(trimmed)
-      const matched = match?.[1]
-      if (matched) saveSessionId(matched)
     }
   })
 
@@ -78,11 +51,6 @@ export async function spawnCoordinator(): Promise<ChildProcess> {
     const text = data.toString().trim()
     if (text) void log('coordinator:err', text)
   })
-
-  // Mark that a session exists so future restarts use --continue
-  if (!sessionId) {
-    saveSessionId('started')
-  }
 
   return claude
 }

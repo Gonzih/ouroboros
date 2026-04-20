@@ -1,11 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('node:fs', () => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-}))
-
 vi.mock('@ouroboros/core', () => ({
   log: vi.fn().mockResolvedValue(undefined),
 }))
@@ -18,13 +12,9 @@ vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
 }))
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { loadSessionId, saveSessionId, buildCoordinatorPrompt, spawnCoordinator } from '../coordinator.js'
+import { buildCoordinatorPrompt, spawnCoordinator } from '../coordinator.js'
 
-const mockExists = vi.mocked(existsSync)
-const mockReadFile = vi.mocked(readFileSync)
-const mockWriteFile = vi.mocked(writeFileSync)
 const mockSpawn = vi.mocked(spawn)
 
 function makeFakeProc() {
@@ -43,60 +33,6 @@ describe('coordinator', () => {
     mockSpawn.mockReturnValue(makeFakeProc() as unknown as ReturnType<typeof spawn>)
   })
 
-  describe('loadSessionId', () => {
-    it('returns undefined when session file does not exist', () => {
-      mockExists.mockReturnValue(false)
-      expect(loadSessionId()).toBeUndefined()
-    })
-
-    it('returns undefined when session file is empty', () => {
-      mockExists.mockReturnValue(true)
-      mockReadFile.mockReturnValue('' as unknown as ReturnType<typeof readFileSync>)
-      expect(loadSessionId()).toBeUndefined()
-    })
-
-    it('returns undefined when session file contains only whitespace', () => {
-      mockExists.mockReturnValue(true)
-      mockReadFile.mockReturnValue('   \n' as unknown as ReturnType<typeof readFileSync>)
-      expect(loadSessionId()).toBeUndefined()
-    })
-
-    it('returns trimmed content when file has a session ID', () => {
-      mockExists.mockReturnValue(true)
-      mockReadFile.mockReturnValue('abc-123-session\n' as unknown as ReturnType<typeof readFileSync>)
-      expect(loadSessionId()).toBe('abc-123-session')
-    })
-
-    it('returns content as-is when already trimmed', () => {
-      mockExists.mockReturnValue(true)
-      mockReadFile.mockReturnValue('started' as unknown as ReturnType<typeof readFileSync>)
-      expect(loadSessionId()).toBe('started')
-    })
-  })
-
-  describe('saveSessionId', () => {
-    it('writes the session ID to the .ouro-session file', () => {
-      saveSessionId('my-session-id')
-      expect(mockWriteFile).toHaveBeenCalledOnce()
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('.ouro-session'),
-        'my-session-id',
-      )
-    })
-
-    it('uses OURO_REPO_ROOT env var in the file path', () => {
-      const savedRoot = process.env['OURO_REPO_ROOT']
-      process.env['OURO_REPO_ROOT'] = '/my/repo'
-      saveSessionId('test-id')
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('/my/repo'),
-        'test-id',
-      )
-      if (savedRoot === undefined) delete process.env['OURO_REPO_ROOT']
-      else process.env['OURO_REPO_ROOT'] = savedRoot
-    })
-  })
-
   describe('buildCoordinatorPrompt', () => {
     it('returns a non-empty string', () => {
       const prompt = buildCoordinatorPrompt()
@@ -112,7 +48,6 @@ describe('coordinator', () => {
     it('references key MCP tool names for worker management', () => {
       const prompt = buildCoordinatorPrompt()
       expect(prompt).toContain('list_jobs')
-      expect(prompt).toContain('spawn_worker')
     })
 
     it('references diagnostic tools', () => {
@@ -131,16 +66,20 @@ describe('coordinator', () => {
       expect(prompt).toContain('list_mcps')
     })
 
-    it('mentions v0.2 and --continue persistence', () => {
+    it('is under 200 words', () => {
       const prompt = buildCoordinatorPrompt()
-      expect(prompt).toContain('v0.2')
-      expect(prompt).toContain('--continue')
+      const wordCount = prompt.trim().split(/\s+/).length
+      expect(wordCount).toBeLessThan(200)
+    })
+
+    it('does not contain gh pr merge', () => {
+      const prompt = buildCoordinatorPrompt()
+      expect(prompt).not.toContain('gh pr merge')
     })
   })
 
   describe('spawnCoordinator', () => {
     it('always passes --dangerously-skip-permissions', async () => {
-      mockExists.mockReturnValue(false)
       await spawnCoordinator()
       const call = mockSpawn.mock.calls[0]
       expect(call).toBeDefined()
@@ -149,7 +88,6 @@ describe('coordinator', () => {
     })
 
     it('always passes --print for non-interactive subprocess behavior', async () => {
-      mockExists.mockReturnValue(false)
       await spawnCoordinator()
       const call = mockSpawn.mock.calls[0]
       expect(call).toBeDefined()
@@ -157,27 +95,16 @@ describe('coordinator', () => {
       expect(args).toContain('--print')
     })
 
-    it('does not use --continue on first start (no session file)', async () => {
-      mockExists.mockReturnValue(false)
+    it('does not use --continue or --resume (stateless)', async () => {
       await spawnCoordinator()
       const call = mockSpawn.mock.calls[0]
       expect(call).toBeDefined()
       const args = call![1] as string[]
       expect(args).not.toContain('--continue')
+      expect(args).not.toContain('--resume')
     })
 
-    it('uses --continue when session file exists', async () => {
-      mockExists.mockReturnValue(true)
-      mockReadFile.mockReturnValue('existing-session' as unknown as ReturnType<typeof readFileSync>)
-      await spawnCoordinator()
-      const call = mockSpawn.mock.calls[0]
-      expect(call).toBeDefined()
-      const args = call![1] as string[]
-      expect(args).toContain('--continue')
-    })
-
-    it('passes the coordinator prompt on first start', async () => {
-      mockExists.mockReturnValue(false)
+    it('always passes the coordinator prompt via -p flag', async () => {
       await spawnCoordinator()
       const call = mockSpawn.mock.calls[0]
       expect(call).toBeDefined()
@@ -188,25 +115,7 @@ describe('coordinator', () => {
       expect(prompt).toContain('Ouroboros coordinator')
     })
 
-    it('saves a session marker on first start', async () => {
-      mockExists.mockReturnValue(false)
-      await spawnCoordinator()
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('.ouro-session'),
-        expect.any(String),
-      )
-    })
-
-    it('does not overwrite session file when session already exists', async () => {
-      mockExists.mockReturnValue(true)
-      mockReadFile.mockReturnValue('my-session' as unknown as ReturnType<typeof readFileSync>)
-      await spawnCoordinator()
-      // saveSessionId only called if !sessionId — when session exists, no write
-      expect(mockWriteFile).not.toHaveBeenCalled()
-    })
-
     it('passes --mcp-config pointing to claude-control.json', async () => {
-      mockExists.mockReturnValue(false)
       await spawnCoordinator()
       const call = mockSpawn.mock.calls[0]
       expect(call).toBeDefined()
@@ -218,7 +127,6 @@ describe('coordinator', () => {
     })
 
     it('returns the spawned ChildProcess', async () => {
-      mockExists.mockReturnValue(false)
       const fakeProc = makeFakeProc()
       mockSpawn.mockReturnValueOnce(fakeProc as unknown as ReturnType<typeof spawn>)
       const proc = await spawnCoordinator()

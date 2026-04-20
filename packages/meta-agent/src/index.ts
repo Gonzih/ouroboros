@@ -11,9 +11,18 @@ function sleep(ms: number): Promise<void> {
 
 async function runCoordinatorLoop(): Promise<void> {
   while (true) {
+    let didWork = false
     try {
       const proc = await spawnCoordinator()
+      proc.stdout?.on('data', (data: Buffer) => {
+        if (data.toString().includes('[coordinator:did-work]')) didWork = true
+      })
       await new Promise<void>(resolve => proc.once('exit', () => resolve()))
+      if (didWork) {
+        await log('meta-agent', '[coordinator:did-work] detected')
+      } else {
+        await log('meta-agent', 'Coordinator cycle idle — no actions taken')
+      }
     } catch (err) {
       await log('meta-agent', `Coordinator spawn error: ${String(err)}`)
     }

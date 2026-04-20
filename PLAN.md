@@ -1,57 +1,32 @@
-# Plan: meta-agent v2 — persistent Claude coordinator session
+# PLAN — Stateless coordinator cycles + shorter prompt + merge gate
 
-## Task Restatement
-Upgrade meta-agent from four Node.js polling loops to a thin supervisor that spawns a persistent Claude session as the actual coordinator. Claude uses the Ouroboros MCP tools (`@ouroboros/mcp-server`) to reason and act. Keep v0.1 loops as `OURO_LEGACY_LOOPS=true` fallback. Watchdog + advisory lock stay in Node.js (must outlive Claude sessions).
+## Task restatement
 
-## Architecture Shift
-```
-v0.1 (before):
-meta-agent Node.js
-  Loop 1: LISTEN/NOTIFY → log MCP registrations
-  Loop 2: poll pgmq every 2s → spawn workers
-  Loop 3: poll pgmq every 5s → spawnSync claude for evolution
-  Loop 4: watchdog every 60s → fix dead PIDs
+Four focused changes to the meta-agent coordinator:
+1. **Shorter prompt** — cut `buildCoordinatorPrompt()` from ~200 words to ~80 words; remove `--continue`/v0.2 references; add `[coordinator:did-work]` output instruction; add `create_plan()` instruction; coordinator logs `[evolution:approved] <pr_url>` instead of merging.
+2. **Stateless coordinator** — remove session file logic (`loadSessionId`, `saveSessionId`, `.ouro-session`). Every cycle spawns a fresh Claude process with `-p prompt`. No `--continue`/`--resume`.
+3. **Evolution merge gate** — `pollForApproval` in `evolution.ts` currently auto-runs `gh pr merge` when it sees status='approved'. Change: transition status to 'merge_ready', publish notification, stop polling. Add new `merge_evolution(id)` MCP tool that humans call to perform the actual merge.
+4. **`[coordinator:did-work]` parsing** — in `runCoordinatorLoop` (index.ts), scan output for `[coordinator:did-work]`; log idle if absent.
 
-v0.2 (after):
-meta-agent Node.js (thin supervisor)
-  - migrate() + advisory lock + crash recovery + signal handlers (unchanged)
-  - watchdogLoop() stays in Node.js (Claude can't watch its own PID)
-  - spawnCoordinator() → persistent Claude session with --mcp-config claude-control.json
-  - runCoordinatorLoop() → restart Claude on exit with 5s backoff
-  - OURO_LEGACY_LOOPS=true → fallback to v0.1 loops unchanged
-```
+## Approaches considered
 
-## Approaches Considered
+**Approach A (chosen):** Surgical edits to each file; minimal scope. coordinator.ts loses fs imports entirely. evolution.ts pollForApproval becomes a simple status transition. merge_evolution is a new tool in mcp-server/src/tools/feedback.ts.
 
-### A) Full replacement — delete polling loops
-- Pro: minimal code
-- Con: no rollback path if Claude coordinator breaks in production
+**Approach B:** Move merge_evolution into meta-agent as an HTTP endpoint. More complex, cross-service; not needed.
 
-### B) Parallel coexistence — run both simultaneously
-- Pro: belt-and-suspenders
-- Con: double-processes everything, conflicting state writes
+**Approach C:** Keep session file but just stop using --continue. Wasteful; the whole session infrastructure becomes dead code.
 
-### C) Feature-flag switch (chosen)
-`OURO_LEGACY_LOOPS=true` switches back to v0.1. Default is v0.2.
-- Pro: explicit rollback, operators can cut over when ready
-- Con: two code paths to maintain
+## Files to touch
 
-## Session ID Handling
-`.ouro-session` file in repo root (gitignored):
-- Not present → fresh start: `claude --print -p {coordinator_prompt}`
-- Present → resume: `claude --continue --print -p "Continue coordination..."`
-- Both cases use `--print` to ensure non-interactive subprocess behavior
-- On first start: write 'started' to file immediately after spawn
-- If real UUID is parsed from Claude output: overwrite 'started' with UUID
+- `packages/meta-agent/src/coordinator.ts` — rewrite (Changes 1+2)
+- `packages/meta-agent/src/index.ts` — add did-work parsing (Change 4)
+- `packages/meta-agent/src/loops/evolution.ts` — remove auto-merge (Change 3)
+- `packages/mcp-server/src/tools/feedback.ts` — add merge_evolution tool (Change 3)
+- `packages/meta-agent/src/__tests__/coordinator.test.ts` — remove session tests, add new assertions
+- `packages/mcp-server/src/__tests__/tools.test.ts` — add merge_evolution tests
 
-## Files to Touch
-- `packages/meta-agent/src/coordinator.ts` — NEW
-- `packages/meta-agent/src/index.ts` — add runCoordinatorLoop(), OURO_LEGACY_LOOPS branch
-- `packages/meta-agent/src/__tests__/coordinator.test.ts` — NEW
-- `.gitignore` — add .ouro-session, logs/, *.err
-- `.env.example` — add OURO_LEGACY_LOOPS
+## Risks and unknowns
 
-## Risks & Unknowns
-- `noUncheckedIndexedAccess: true` — regex `match?.[1]` returns `string | undefined`, guard before use
-- `--continue` requires same cwd as original session — guaranteed via `cwd: repoRoot`
-- Claude output session ID parsing is best-effort; placeholder 'started' handles the case where no UUID appears
+- `merge_evolution` in mcp-server uses `spawnSync('gh', ...)` — gh CLI must be available in the deployment environment (same assumption as current evolution.ts code).
+- `pollForApproval` background loop stops after seeing 'approved' → 'merge_ready'. If meta-agent restarts while status is 'merge_ready', no loop is watching it. The merge_evolution MCP tool handles it on demand, so this is acceptable.
+- 'merge_ready' is a new status — needs to be added to the `list_feedback` enum.

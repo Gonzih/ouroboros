@@ -7,7 +7,14 @@ vi.mock('@ouroboros/core', () => ({
   enqueue: vi.fn().mockResolvedValue(BigInt(1)),
 }))
 
+vi.mock('node:child_process', () => ({
+  spawnSync: vi.fn(),
+}))
+
 import { getDb, log, publish, enqueue } from '@ouroboros/core'
+import { spawnSync } from 'node:child_process'
+
+const mockSpawnSync = vi.mocked(spawnSync)
 import { handleJobTool } from '../tools/jobs.js'
 import { handleMcpTool } from '../tools/mcp.js'
 import { handleFeedbackTool } from '../tools/feedback.js'
@@ -245,6 +252,49 @@ describe('handleFeedbackTool', () => {
     const result = await handleFeedbackTool('reject_evolution', { id: 'f1', reason: 'bad idea' })
     const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
     expect((parsed as Record<string, unknown>)['rejected']).toBe(true)
+  })
+
+  it('merge_evolution merges PR and sets status to applied', async () => {
+    const row = { pr_url: 'https://github.com/org/repo/pull/42', status: 'merge_ready' }
+    mockGetDb
+      .mockReturnValueOnce(makeDbMock([row]))   // SELECT
+      .mockReturnValueOnce(makeDbMock([]))       // UPDATE
+    mockSpawnSync.mockReturnValue({ status: 0, stdout: '', stderr: '', output: [], pid: 1, signal: null, error: undefined })
+    const result = await handleFeedbackTool('merge_evolution', { id: 'f1' })
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      'gh',
+      ['pr', 'merge', '--squash', 'https://github.com/org/repo/pull/42'],
+      expect.objectContaining({ encoding: 'utf8' }),
+    )
+    expect(mockPublish).toHaveBeenCalledWith(
+      'ouro_notify',
+      expect.objectContaining({ type: 'evolution_applied', feedbackId: 'f1' }),
+    )
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['merged']).toBe(true)
+  })
+
+  it('merge_evolution returns error when feedback not found', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([]))
+    const result = await handleFeedbackTool('merge_evolution', { id: 'missing' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['error']).toContain('not found')
+  })
+
+  it('merge_evolution returns error when status is not merge_ready or approved', async () => {
+    mockGetDb.mockReturnValue(makeDbMock([{ pr_url: 'https://github.com/org/repo/pull/1', status: 'pending' }]))
+    const result = await handleFeedbackTool('merge_evolution', { id: 'f1' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['error']).toContain('pending')
+  })
+
+  it('merge_evolution returns merged: false on gh failure', async () => {
+    const row = { pr_url: 'https://github.com/org/repo/pull/99', status: 'approved' }
+    mockGetDb.mockReturnValue(makeDbMock([row]))
+    mockSpawnSync.mockReturnValue({ status: 1, stdout: '', stderr: 'not authorized', output: [], pid: 1, signal: null, error: undefined })
+    const result = await handleFeedbackTool('merge_evolution', { id: 'f1' })
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? '{}')
+    expect((parsed as Record<string, unknown>)['merged']).toBe(false)
   })
 
   it('throws on unknown tool name', async () => {

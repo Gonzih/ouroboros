@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { getDb, enqueue, publish } from '@ouroboros/core'
 import { randomUUID } from 'node:crypto'
 import { textResult } from './jobs.js'
@@ -28,7 +29,7 @@ export const feedbackTools = [
       properties: {
         status: {
           type: 'string',
-          enum: ['pending', 'pr_open', 'approved', 'rejected', 'applied'],
+          enum: ['pending', 'pr_open', 'approved', 'merge_ready', 'rejected', 'applied'],
           description: 'Filter by status (omit for all)',
         },
         limit: { type: 'number', description: 'Max rows to return (default 20)' },
@@ -37,7 +38,7 @@ export const feedbackTools = [
   },
   {
     name: 'approve_evolution',
-    description: 'Approve a pending evolution PR so Ouroboros can merge and rebuild',
+    description: 'Approve a pending evolution PR — sets status to approved, awaiting human merge via merge_evolution()',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -54,6 +55,17 @@ export const feedbackTools = [
       properties: {
         id: { type: 'string', description: 'Feedback ID to reject' },
         reason: { type: 'string', description: 'Optional rejection reason' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'merge_evolution',
+    description: 'Merge an approved evolution PR (human-initiated action only — runs gh pr merge --squash)',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        id: { type: 'string', description: 'Feedback ID with status merge_ready or approved' },
       },
       required: ['id'],
     },
@@ -115,6 +127,37 @@ export async function handleFeedbackTool(
       RETURNING id
     `
     return textResult(JSON.stringify({ rejected: rows.length > 0 }))
+  }
+
+  if (name === 'merge_evolution') {
+    const id = typeof a['id'] === 'string' ? a['id'] : ''
+    const rows = await db<{ pr_url: string; status: string }[]>`
+      SELECT pr_url, status FROM ouro_feedback WHERE id = ${id}
+    `
+    const row = rows[0]
+    if (!row) return textResult(JSON.stringify({ error: 'feedback not found' }))
+    if (row.status !== 'merge_ready' && row.status !== 'approved') {
+      return textResult(JSON.stringify({ error: `cannot merge: status is ${row.status}` }))
+    }
+    const prUrl = row.pr_url
+    if (!prUrl) return textResult(JSON.stringify({ error: 'no PR URL on record' }))
+
+    const result = spawnSync('gh', ['pr', 'merge', '--squash', prUrl], {
+      encoding: 'utf8',
+      timeout: 60_000,
+    })
+
+    if (result.status === 0) {
+      await db`
+        UPDATE ouro_feedback SET status = 'applied', resolved_at = NOW()
+        WHERE id = ${id}
+      `
+      await publish('ouro_notify', { type: 'evolution_applied', feedbackId: id, prUrl })
+      return textResult(JSON.stringify({ merged: true, prUrl }))
+    }
+
+    const stderr = result.stderr ?? ''
+    return textResult(JSON.stringify({ merged: false, error: stderr }))
   }
 
   throw new Error(`Unknown feedback tool: ${name}`)
