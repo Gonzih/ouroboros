@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "postbuild": "cp -r src/migrations dist/migrations",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "test": "vitest run"
