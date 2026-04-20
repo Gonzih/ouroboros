@@ -30,7 +30,8 @@ export const useLogsStore = defineStore('logs', () => {
     try {
       const res = await fetch('/api/logs')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      logs.value = (await res.json()) as LogEntry[]
+      const data = (await res.json()) as { logs: LogEntry[] }
+      logs.value = data.logs
     } catch (err: unknown) {
       error.value = String(err)
     } finally {

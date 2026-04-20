@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import request from 'supertest'
+import * as http from 'node:http'
 
 // Mock all @ouroboros/core before importing the app
 const mockDb = vi.fn()
@@ -458,14 +459,49 @@ describe('UI REST API routes', () => {
   })
 
   describe('GET /api/logs', () => {
-    it('returns log entries from db', async () => {
+    it('returns log entries wrapped in { logs: [] }', async () => {
       mockDb.mockResolvedValueOnce([
         { id: 'l1', source: 'meta-agent', message: 'tick', ts: new Date() },
       ])
       const res = await request(app).get('/api/logs')
       expect(res.status).toBe(200)
-      expect(res.body[0].source).toBe('meta-agent')
-      expect(res.body[0].message).toBe('tick')
+      expect(Array.isArray(res.body.logs)).toBe(true)
+      expect(res.body.logs[0].source).toBe('meta-agent')
+      expect(res.body.logs[0].message).toBe('tick')
+    })
+
+    it('accepts ?source filter', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).get('/api/logs?source=coordinator')
+      expect(res.status).toBe(200)
+      expect(res.body.logs).toEqual([])
+    })
+
+    it('accepts ?limit filter', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).get('/api/logs?limit=100')
+      expect(res.status).toBe(200)
+      expect(Array.isArray(res.body.logs)).toBe(true)
+    })
+
+    it('caps ?limit at 1000', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).get('/api/logs?limit=9999')
+      expect(res.status).toBe(200)
+    })
+
+    it('accepts ?since filter', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).get('/api/logs?since=2024-01-01T00:00:00Z')
+      expect(res.status).toBe(200)
+      expect(res.body.logs).toEqual([])
+    })
+
+    it('accepts combined ?source and ?since filters', async () => {
+      mockDb.mockResolvedValueOnce([])
+      const res = await request(app).get('/api/logs?source=worker&since=2024-01-01T00:00:00Z')
+      expect(res.status).toBe(200)
+      expect(res.body.logs).toEqual([])
     })
 
     it('returns 500 when db throws', async () => {
@@ -602,6 +638,64 @@ describe('UI REST API routes', () => {
       mockFetch.mockRejectedValueOnce(new Error('connection refused'))
       const res = await request(app).delete('/api/mcp/corp-db')
       expect(res.status).toBe(500)
+    })
+  })
+
+  describe('GET /api/logs/stream', () => {
+    it('returns SSE headers and streams initial batch', async () => {
+      const initialRows = [
+        { id: 1, source: 'coordinator', message: 'hello', ts: new Date().toISOString() },
+        { id: 2, source: 'worker', message: 'working', ts: new Date().toISOString() },
+      ]
+      mockDb.mockResolvedValueOnce(initialRows).mockResolvedValue([])
+
+      // Use vi.importActual to get real createServer (bypasses the node:http mock)
+      const actualHttp = await vi.importActual<typeof import('node:http')>('node:http')
+      const srv = actualHttp.createServer(app as http.RequestListener)
+
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          srv.close()
+          reject(new Error('SSE test timed out'))
+        }, 3000)
+
+        srv.listen(0, () => {
+          const addr = srv.address() as import('net').AddressInfo
+          const req = http.request(
+            { hostname: 'localhost', port: addr.port, path: '/api/logs/stream', method: 'GET' },
+            (res) => {
+              expect(res.headers['content-type']).toContain('text/event-stream')
+              expect(res.headers['cache-control']).toBe('no-cache')
+
+              let buf = ''
+              res.on('data', (chunk: Buffer) => {
+                buf += chunk.toString()
+                if (buf.includes('\n\n')) {
+                  const line = buf.split('\n').find(l => l.startsWith('data: '))
+                  if (line) {
+                    const parsed = JSON.parse(line.slice(6)) as unknown
+                    expect(Array.isArray(parsed)).toBe(true)
+                    clearTimeout(timer)
+                    req.destroy()
+                    srv.close(() => resolve())
+                  }
+                }
+              })
+            }
+          )
+          req.on('error', (e: Error) => {
+            const code = (e as NodeJS.ErrnoException).code
+            if (code === 'ECONNRESET') {
+              clearTimeout(timer)
+              srv.close(() => resolve())
+            } else {
+              clearTimeout(timer)
+              srv.close(() => reject(e))
+            }
+          })
+          req.end()
+        })
+      })
     })
   })
 })
